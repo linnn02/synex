@@ -67,7 +67,10 @@ class _HalykHealthAppState extends State<HalykHealthApp> {
               apiService: _apiService,
               onLoggedIn: (user) => setState(() => _user = user),
             )
-          : HomeScreen(apiService: _apiService, user: _user!),
+          : HomeScreen(
+              apiService: _apiService,
+              user: _user!,
+            ),
     );
   }
 }

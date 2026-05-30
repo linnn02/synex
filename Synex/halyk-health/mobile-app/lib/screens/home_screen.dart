@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../models/api_models.dart';
@@ -14,10 +16,12 @@ class HomeScreen extends StatefulWidget {
     super.key,
     required this.apiService,
     required this.user,
+    this.enablePrescriptionPolling = true,
   });
 
   final ApiService apiService;
   final AppUser user;
+  final bool enablePrescriptionPolling;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -25,11 +29,29 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   late Future<_HomePrescriptionState> _future;
+  Timer? _pollTimer;
+  Timer? _notificationTimer;
+  String? _latestPrescriptionId;
+  Prescription? _popupPrescription;
 
   @override
   void initState() {
     super.initState();
     _future = _load();
+    _future.then((state) => _latestPrescriptionId = state.prescription?.id);
+    if (widget.enablePrescriptionPolling) {
+      _pollTimer = Timer.periodic(
+        const Duration(seconds: 4),
+        (_) => _pollForNewPrescription(),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _pollTimer?.cancel();
+    _notificationTimer?.cancel();
+    super.dispose();
   }
 
   Future<_HomePrescriptionState> _load() async {
@@ -44,7 +66,43 @@ class _HomeScreenState extends State<HomeScreen> {
     return _HomePrescriptionState(prescription: selected);
   }
 
+  Future<void> _pollForNewPrescription() async {
+    if (!mounted) return;
+
+    try {
+      final state = await _load();
+      final prescription = state.prescription;
+      final previousId = _latestPrescriptionId;
+
+      if (prescription == null) {
+        return;
+      }
+
+      if (previousId == null) {
+        _latestPrescriptionId = prescription.id;
+        return;
+      }
+
+      if (prescription.id != previousId) {
+        _latestPrescriptionId = prescription.id;
+        setState(() {
+          _future = Future.value(state);
+          _popupPrescription = prescription;
+        });
+        _showPrescriptionBanner(prescription);
+        _schedulePopupDismiss(prescription);
+      }
+    } catch (_) {
+      // Polling should never interrupt the patient app if backend is offline.
+    }
+  }
+
   Future<void> _openPrescription(Prescription prescription) async {
+    _notificationTimer?.cancel();
+    if (_popupPrescription != null) {
+      setState(() => _popupPrescription = null);
+    }
+
     await Navigator.push(
       context,
       MaterialPageRoute(
@@ -60,6 +118,69 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  void _schedulePopupDismiss(Prescription prescription) {
+    _notificationTimer?.cancel();
+    _notificationTimer = Timer(const Duration(seconds: 7), () {
+      if (mounted && _popupPrescription?.id == prescription.id) {
+        setState(() => _popupPrescription = null);
+      }
+    });
+  }
+
+  void _showPrescriptionBanner(Prescription prescription) {
+    final messenger = ScaffoldMessenger.of(context);
+
+    messenger.clearMaterialBanners();
+    messenger.showMaterialBanner(
+      MaterialBanner(
+        elevation: 6,
+        backgroundColor: Colors.white,
+        leading: Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: const Color(0xFFE8F7EF),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: const Icon(
+            Icons.notifications_active_outlined,
+            color: _halykGreen,
+          ),
+        ),
+        content: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Вам выписали назначение',
+              style: TextStyle(
+                color: _halykDark,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            Text(
+              prescription.diagnosis,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: _muted),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              messenger.clearMaterialBanners();
+              _openPrescription(prescription);
+            },
+            child: const Text('Открыть'),
+          ),
+        ],
+      ),
+    );
+
+    Timer(const Duration(seconds: 7), messenger.clearMaterialBanners);
+  }
+
   void _showStub(String title) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -69,70 +190,99 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: _surfaceBg,
-      body: SafeArea(
-        bottom: false,
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final contentWidth =
-                constraints.maxWidth > 430 ? 430.0 : constraints.maxWidth;
+    final popup = _popupPrescription;
 
-            return Align(
-              alignment: Alignment.topCenter,
-              child: SizedBox(
-                width: contentWidth,
-                height: constraints.maxHeight,
-                child: FutureBuilder<_HomePrescriptionState>(
-                  future: _future,
-                  builder: (context, snapshot) {
-                    final prescription = snapshot.data?.prescription;
+    return Stack(
+      children: [
+        Scaffold(
+          backgroundColor: _surfaceBg,
+          body: SafeArea(
+            bottom: false,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final contentWidth =
+                    constraints.maxWidth > 430 ? 430.0 : constraints.maxWidth;
 
-                    return RefreshIndicator(
-                      color: _halykGreen,
-                      onRefresh: () async {
-                        setState(() => _future = _load());
-                        await _future;
-                      },
-                      child: ListView(
-                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 120),
-                        children: [
-                          _HalykTopBar(user: widget.user),
-                          const SizedBox(height: 16),
-                          _PromoStrip(onTap: () => _showStub('Маркет')),
-                          const SizedBox(height: 14),
-                          _CoreServicesGrid(onService: _showStub),
-                          const SizedBox(height: 16),
-                          _PrescriptionNotificationCard(
-                            loading: !snapshot.hasData,
-                            prescription: prescription,
-                            onOpen: prescription == null
-                                ? null
-                                : () => _openPrescription(prescription),
+                return Align(
+                  alignment: Alignment.topCenter,
+                  child: SizedBox(
+                    width: contentWidth,
+                    height: constraints.maxHeight,
+                    child: FutureBuilder<_HomePrescriptionState>(
+                      future: _future,
+                      builder: (context, snapshot) {
+                        final prescription = snapshot.data?.prescription;
+
+                        return RefreshIndicator(
+                          color: _halykGreen,
+                          onRefresh: () async {
+                            setState(() => _future = _load());
+                            await _future;
+                          },
+                          child: ListView(
+                            padding: const EdgeInsets.fromLTRB(16, 12, 16, 120),
+                            children: [
+                              if (popup != null) ...[
+                                _HomePrescriptionToast(
+                                  prescription: popup,
+                                  onTap: () => _openPrescription(popup),
+                                ),
+                                const SizedBox(height: 12),
+                              ],
+                              _HalykTopBar(user: widget.user),
+                              const SizedBox(height: 16),
+                              _PromoStrip(onTap: () => _showStub('Маркет')),
+                              const SizedBox(height: 14),
+                              _CoreServicesGrid(onService: _showStub),
+                              const SizedBox(height: 16),
+                              _PrescriptionNotificationCard(
+                                loading: !snapshot.hasData,
+                                prescription: prescription,
+                                onOpen: prescription == null
+                                    ? null
+                                    : () => _openPrescription(prescription),
+                              ),
+                              const SizedBox(height: 16),
+                              _AllServicesRow(onService: _showStub),
+                              const SizedBox(height: 16),
+                              _MarketSwitch(onService: _showStub),
+                            ],
                           ),
-                          const SizedBox(height: 16),
-                          _AllServicesRow(onService: _showStub),
-                          const SizedBox(height: 16),
-                          _MarketSwitch(onService: _showStub),
-                        ],
-                      ),
-                    );
-                  },
-                ),
+                        );
+                      },
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          bottomNavigationBar: SizedBox(
+            height: 92,
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 430),
+                child: _HalykBottomBar(onTap: _showStub),
               ),
-            );
-          },
-        ),
-      ),
-      bottomNavigationBar: SizedBox(
-        height: 92,
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 430),
-            child: _HalykBottomBar(onTap: _showStub),
+            ),
           ),
         ),
-      ),
+        if (popup != null)
+          Positioned(
+            top: MediaQuery.paddingOf(context).top + 12,
+            left: 16,
+            right: 16,
+            child: Align(
+              alignment: Alignment.topCenter,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 430),
+                child: _HomePrescriptionToast(
+                  prescription: popup,
+                  onTap: () => _openPrescription(popup),
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
@@ -141,6 +291,95 @@ class _HomePrescriptionState {
   const _HomePrescriptionState({required this.prescription});
 
   final Prescription? prescription;
+}
+
+class _HomePrescriptionToast extends StatelessWidget {
+  const _HomePrescriptionToast({
+    required this.prescription,
+    required this.onTap,
+  });
+
+  final Prescription prescription;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(24),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: const Color(0xFFCDEFD9)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.14),
+                blurRadius: 24,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE8F7EF),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: const Icon(
+                  Icons.notifications_active_outlined,
+                  color: _halykGreen,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text(
+                      'Halyk Health',
+                      style: TextStyle(
+                        color: _muted,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const Text(
+                      'Вам выписали назначение',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: _halykDark,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    Text(
+                      prescription.diagnosis,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: _muted,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right, color: _halykGreen),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _HalykTopBar extends StatelessWidget {
@@ -883,18 +1122,22 @@ class _PrescriptionJourneyScreenState extends State<PrescriptionJourneyScreen> {
   Future<_PrescriptionJourneyData> _load() async {
     var prescription = widget.initialPrescription;
 
-    if (prescription.aiSummary == null || prescription.medicines.isEmpty) {
+    if (prescription.medicines.isEmpty) {
       prescription =
           await widget.apiService.analyzePrescription(prescription.id);
     }
 
     final groups =
         await widget.apiService.getPrescriptionMarketProducts(prescription.id);
+    final allProducts = await widget.apiService
+        .getMarketProducts()
+        .catchError((_) => <MarketProduct>[]);
     final schedule = await widget.apiService
         .getPrescriptionSchedule(prescription.id)
         .catchError((_) => <MedicationScheduleItem>[]);
 
     final cartLines = <ApptekaDraftLine>[];
+    final missing = <MissingMedicineSuggestion>[];
     for (final medicine in prescription.medicines) {
       final matchingGroup = groups.where(
         (group) => group.prescriptionMedicine.id == medicine.id,
@@ -902,12 +1145,64 @@ class _PrescriptionJourneyScreenState extends State<PrescriptionJourneyScreen> {
       final products = matchingGroup.isEmpty
           ? <MarketProduct>[]
           : matchingGroup.first.products;
-      if (products.isNotEmpty) {
+
+      final exactProducts = products
+          .where((product) => _isExactMatch(product, medicine))
+          .toList()
+        ..sort(_productSort);
+      final sameActiveProducts = products
+          .where((product) => _sameActiveSubstance(product, medicine))
+          .toList()
+        ..sort(_productSort);
+
+      if (exactProducts.isNotEmpty) {
         cartLines.add(
           ApptekaDraftLine(
             medicine: medicine,
-            product: products.first,
+            product: exactProducts.first,
             quantity: medicine.quantityNeeded < 1 ? 1 : medicine.quantityNeeded,
+            matchLabel: 'Точное совпадение',
+            reason: 'Товар найден по названию и назначению врача.',
+          ),
+        );
+        continue;
+      }
+
+      if (sameActiveProducts.isNotEmpty) {
+        cartLines.add(
+          ApptekaDraftLine(
+            medicine: medicine,
+            product: sameActiveProducts.first,
+            quantity: medicine.quantityNeeded < 1 ? 1 : medicine.quantityNeeded,
+            selected: false,
+            isAlternative: true,
+            matchLabel: 'Аналог',
+            reason:
+                'Назначенный товар не найден в наличии. Предложен препарат с тем же действующим веществом.',
+          ),
+        );
+        continue;
+      }
+
+      final fallbackProducts = _samePurposeProducts(medicine, allProducts);
+      if (fallbackProducts.isNotEmpty) {
+        cartLines.add(
+          ApptekaDraftLine(
+            medicine: medicine,
+            product: fallbackProducts.first,
+            quantity: medicine.quantityNeeded < 1 ? 1 : medicine.quantityNeeded,
+            selected: false,
+            isAlternative: true,
+            matchLabel: 'Замена по категории',
+            reason:
+                'В маркетплейсе нет назначенного препарата. Показан товар с похожим назначением: ${_purposeForMedicine(medicine)}.',
+          ),
+        );
+      } else {
+        missing.add(
+          MissingMedicineSuggestion(
+            medicine: medicine,
+            purpose: _purposeForMedicine(medicine),
           ),
         );
       }
@@ -918,7 +1213,41 @@ class _PrescriptionJourneyScreenState extends State<PrescriptionJourneyScreen> {
       groups: groups,
       schedule: schedule,
       cartLines: cartLines,
+      missingSuggestions: missing,
     );
+  }
+
+  bool _isExactMatch(MarketProduct product, PrescriptionMedicine medicine) {
+    return product.title
+        .toLowerCase()
+        .contains(medicine.medicineName.toLowerCase());
+  }
+
+  bool _sameActiveSubstance(
+    MarketProduct product,
+    PrescriptionMedicine medicine,
+  ) {
+    return product.activeSubstance.toLowerCase() ==
+        medicine.activeSubstance.toLowerCase();
+  }
+
+  int _productSort(MarketProduct a, MarketProduct b) {
+    final stockCompare = b.stock.compareTo(a.stock);
+    if (stockCompare != 0) return stockCompare;
+    return a.price.compareTo(b.price);
+  }
+
+  List<MarketProduct> _samePurposeProducts(
+    PrescriptionMedicine medicine,
+    List<MarketProduct> products,
+  ) {
+    final purpose = _purposeForMedicine(medicine);
+    if (purpose == 'Другое') return [];
+
+    return products
+        .where((product) => product.category == purpose && product.stock > 0)
+        .toList()
+      ..sort(_productSort);
   }
 
   Future<void> _buy(_PrescriptionJourneyData data) async {
@@ -935,7 +1264,19 @@ class _PrescriptionJourneyScreenState extends State<PrescriptionJourneyScreen> {
         );
       }
       if (!mounted) return;
-      await _showReminderDialog(data);
+      final remindersEnabled = await _showReminderDialog(data);
+      if (!mounted) return;
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ApptekaSelectionScreen(
+            prescription: data.prescription,
+            lines: data.cartLines,
+            missingSuggestions: data.missingSuggestions,
+            remindersEnabled: remindersEnabled,
+          ),
+        ),
+      );
     } finally {
       if (mounted) {
         setState(() => _buying = false);
@@ -943,7 +1284,7 @@ class _PrescriptionJourneyScreenState extends State<PrescriptionJourneyScreen> {
     }
   }
 
-  Future<void> _showReminderDialog(_PrescriptionJourneyData data) async {
+  Future<bool> _showReminderDialog(_PrescriptionJourneyData data) async {
     final enabled = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -965,18 +1306,9 @@ class _PrescriptionJourneyScreenState extends State<PrescriptionJourneyScreen> {
       ),
     );
 
-    if (!mounted) return;
+    if (!mounted) return false;
     setState(() => _remindersEnabled = enabled == true);
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          enabled == true
-              ? 'Заказ передан в Appteka. Напоминания включены.'
-              : 'Заказ передан в Appteka. Напоминания можно включить позже.',
-        ),
-      ),
-    );
+    return enabled == true;
   }
 
   @override
@@ -1010,6 +1342,8 @@ class _PrescriptionJourneyScreenState extends State<PrescriptionJourneyScreen> {
                   return ListView(
                     padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
                     children: [
+                      _PrescriptionJourneyHeader(data: data),
+                      const SizedBox(height: 12),
                       _MedicalDocumentCard(prescription: data.prescription),
                       const SizedBox(height: 12),
                       _DoctorRecommendationCard(
@@ -1024,6 +1358,7 @@ class _PrescriptionJourneyScreenState extends State<PrescriptionJourneyScreen> {
                       const SizedBox(height: 12),
                       _ApptekaDraftCart(
                         lines: data.cartLines,
+                        missingSuggestions: data.missingSuggestions,
                         onChanged: () => setState(() {}),
                       ),
                       const SizedBox(height: 12),
@@ -1082,24 +1417,437 @@ class _PrescriptionJourneyScreenState extends State<PrescriptionJourneyScreen> {
   }
 }
 
+class _PrescriptionJourneyHeader extends StatelessWidget {
+  const _PrescriptionJourneyHeader({required this.data});
+
+  final _PrescriptionJourneyData data;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: const Color(0xFF102B23),
+        borderRadius: BorderRadius.circular(26),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: const Icon(Icons.local_hospital_outlined,
+                    color: Colors.white),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Назначение получено',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    Text(
+                      data.prescription.diagnosis,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.76),
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: _HeaderMetric(
+                  value: '${data.prescription.medicines.length}',
+                  label: 'препарата',
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _HeaderMetric(
+                  value: '${data.selectedCount}',
+                  label: 'в корзине',
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _HeaderMetric(
+                  value: '${data.schedule.length}',
+                  label: 'напоминаний',
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HeaderMetric extends StatelessWidget {
+  const _HeaderMetric({required this.value, required this.label});
+
+  final String value;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            value,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.72),
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class ApptekaSelectionScreen extends StatelessWidget {
+  const ApptekaSelectionScreen({
+    super.key,
+    required this.prescription,
+    required this.lines,
+    required this.missingSuggestions,
+    required this.remindersEnabled,
+  });
+
+  final Prescription prescription;
+  final List<ApptekaDraftLine> lines;
+  final List<MissingMedicineSuggestion> missingSuggestions;
+  final bool remindersEnabled;
+
+  @override
+  Widget build(BuildContext context) {
+    final selectedLines = lines.where((line) => line.selected).toList();
+    final alternativeLines =
+        lines.where((line) => !line.selected && line.isAlternative).toList();
+    final total = selectedLines.fold<num>(
+      0,
+      (sum, line) => sum + line.product.price * line.quantity,
+    );
+
+    return Scaffold(
+      backgroundColor: _surfaceBg,
+      appBar: AppBar(
+        title: const Text('Appteka'),
+        backgroundColor: _surfaceBg,
+        foregroundColor: _halykDark,
+      ),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final contentWidth =
+              constraints.maxWidth > 430 ? 430.0 : constraints.maxWidth;
+
+          return Align(
+            alignment: Alignment.topCenter,
+            child: SizedBox(
+              width: contentWidth,
+              height: constraints.maxHeight,
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 110),
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(18),
+                    decoration: BoxDecoration(
+                      color: _halykGreen,
+                      borderRadius: BorderRadius.circular(26),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Подборка готова',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 22,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Товары из назначения добавлены в корзину Appteka. Можно убрать лишнее уже в Appteka перед оплатой.',
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.84),
+                            height: 1.35,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  _WhitePanel(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const _BlockTitle(
+                            icon: Icons.shopping_bag_outlined,
+                            title: 'В корзине'),
+                        const SizedBox(height: 12),
+                        if (selectedLines.isEmpty)
+                          const Text(
+                            'Вы не выбрали товары из назначения.',
+                            style: TextStyle(color: _muted),
+                          )
+                        else
+                          ...selectedLines.map(
+                            (line) => _ApptekaSummaryLine(line: line),
+                          ),
+                        const Divider(height: 26),
+                        Row(
+                          children: [
+                            const Expanded(
+                              child: Text(
+                                'Итого',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 16,
+                                ),
+                              ),
+                            ),
+                            Text(
+                              '${total.toStringAsFixed(0)} ₸',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w900,
+                                fontSize: 18,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (alternativeLines.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    _WhitePanel(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const _BlockTitle(
+                              icon: Icons.compare_arrows,
+                              title: 'Аналоги и замены'),
+                          const SizedBox(height: 10),
+                          const Text(
+                            'Эти товары не добавлены автоматически. Их можно рассмотреть только после консультации.',
+                            style: TextStyle(color: _muted, height: 1.35),
+                          ),
+                          const SizedBox(height: 12),
+                          ...alternativeLines.map(
+                            (line) => _ApptekaSummaryLine(line: line),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  if (missingSuggestions.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    _WhitePanel(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const _BlockTitle(
+                              icon: Icons.warning_amber_outlined,
+                              title: 'Не найдено'),
+                          const SizedBox(height: 12),
+                          ...missingSuggestions.map(
+                            (item) => _MissingMedicineTile(suggestion: item),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 12),
+                  _WhitePanel(
+                    child: Row(
+                      children: [
+                        Icon(
+                          remindersEnabled
+                              ? Icons.notifications_active
+                              : Icons.notifications_off_outlined,
+                          color: _halykGreen,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            remindersEnabled
+                                ? 'Напоминания о приеме включены по графику назначения.'
+                                : 'Напоминания не включены. Их можно включить позже в разделе здоровья.',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w800,
+                              height: 1.3,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+      bottomNavigationBar: SizedBox(
+        height: 88,
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 430),
+            child: SafeArea(
+              minimum: const EdgeInsets.fromLTRB(16, 8, 16, 14),
+              child: FilledButton(
+                onPressed: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        'Заказ оформлен в mock-режиме. Реальная оплата не подключена.',
+                      ),
+                    ),
+                  );
+                },
+                style: FilledButton.styleFrom(
+                  backgroundColor: _halykGreen,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                ),
+                child: const Text(
+                  'Оформить заказ',
+                  style: TextStyle(fontWeight: FontWeight.w900),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ApptekaSummaryLine extends StatelessWidget {
+  const _ApptekaSummaryLine({required this.line});
+
+  final ApptekaDraftLine line;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: _border),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: line.isAlternative
+                  ? const Color(0xFFFFF7E6)
+                  : const Color(0xFFE8F7EF),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(
+              line.isAlternative ? Icons.compare_arrows : Icons.check,
+              color: line.isAlternative ? const Color(0xFFB45309) : _halykGreen,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  line.product.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w900),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '${line.quantity} шт · ${line.product.pharmacyName}',
+                  style: const TextStyle(color: _muted, fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+          Text(
+            '${(line.product.price * line.quantity).toStringAsFixed(0)} ₸',
+            style: const TextStyle(fontWeight: FontWeight.w900),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _PrescriptionJourneyData {
   const _PrescriptionJourneyData({
     required this.prescription,
     required this.groups,
     required this.schedule,
     required this.cartLines,
+    required this.missingSuggestions,
   });
 
   final Prescription prescription;
   final List<MedicineProductGroup> groups;
   final List<MedicationScheduleItem> schedule;
   final List<ApptekaDraftLine> cartLines;
+  final List<MissingMedicineSuggestion> missingSuggestions;
 
   num get selectedTotal => cartLines.fold<num>(
         0,
         (sum, line) =>
             line.selected ? sum + line.product.price * line.quantity : sum,
       );
+
+  int get selectedCount => cartLines.where((line) => line.selected).length;
 }
 
 class ApptekaDraftLine {
@@ -1107,13 +1855,67 @@ class ApptekaDraftLine {
     required this.medicine,
     required this.product,
     required this.quantity,
+    required this.matchLabel,
+    required this.reason,
     this.selected = true,
+    this.isAlternative = false,
   });
 
   final PrescriptionMedicine medicine;
   final MarketProduct product;
+  final String matchLabel;
+  final String reason;
+  final bool isAlternative;
   int quantity;
   bool selected;
+}
+
+class MissingMedicineSuggestion {
+  const MissingMedicineSuggestion({
+    required this.medicine,
+    required this.purpose,
+  });
+
+  final PrescriptionMedicine medicine;
+  final String purpose;
+}
+
+String _purposeForMedicine(PrescriptionMedicine medicine) {
+  final normalized =
+      '${medicine.medicineName} ${medicine.activeSubstance}'.toLowerCase();
+
+  if (normalized.contains('amoxicillin') ||
+      normalized.contains('azithromycin') ||
+      normalized.contains('амоксициллин') ||
+      normalized.contains('азитромицин')) {
+    return 'Антибиотики';
+  }
+
+  if (normalized.contains('ibuprofen') ||
+      normalized.contains('paracetamol') ||
+      normalized.contains('ибупрофен') ||
+      normalized.contains('парацетамол')) {
+    return 'Температура и боль';
+  }
+
+  if (normalized.contains('loratadine') ||
+      normalized.contains('cetirizine') ||
+      normalized.contains('лоратадин') ||
+      normalized.contains('цетиризин')) {
+    return 'Аллергия';
+  }
+
+  if (normalized.contains('спрей') ||
+      normalized.contains('горла') ||
+      normalized.contains('throat')) {
+    return 'Горло';
+  }
+
+  if (normalized.contains('vitamin') || normalized.contains('витамин')) {
+    return 'Витамины';
+  }
+
+  return 'Другое';
 }
 
 class _MedicalDocumentCard extends StatelessWidget {
@@ -1297,15 +2099,17 @@ class _MedicineScheduleCard extends StatelessWidget {
 class _ApptekaDraftCart extends StatelessWidget {
   const _ApptekaDraftCart({
     required this.lines,
+    required this.missingSuggestions,
     required this.onChanged,
   });
 
   final List<ApptekaDraftLine> lines;
+  final List<MissingMedicineSuggestion> missingSuggestions;
   final VoidCallback onChanged;
 
   @override
   Widget build(BuildContext context) {
-    if (lines.isEmpty) {
+    if (lines.isEmpty && missingSuggestions.isEmpty) {
       return const _WhitePanel(
         child: Text('Appteka не нашла товары по назначению.'),
       );
@@ -1351,6 +2155,17 @@ class _ApptekaDraftCart extends StatelessWidget {
               line: line,
               onChanged: onChanged,
             ),
+          ),
+          if (missingSuggestions.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            ...missingSuggestions.map(
+              (item) => _MissingMedicineTile(suggestion: item),
+            ),
+          ],
+          const SizedBox(height: 8),
+          const Text(
+            'Аналог не означает автоматическую замену. Перед заменой препарата проконсультируйтесь с врачом или фармацевтом.',
+            style: TextStyle(color: _muted, fontSize: 12, height: 1.35),
           ),
         ],
       ),
@@ -1398,10 +2213,48 @@ class _DraftCartLine extends StatelessWidget {
                   style: const TextStyle(fontWeight: FontWeight.w900),
                 ),
                 const SizedBox(height: 4),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    _TinyBadge(
+                      text: line.matchLabel,
+                      color: line.isAlternative
+                          ? const Color(0xFFFFF7E6)
+                          : const Color(0xFFE8F7EF),
+                      textColor: line.isAlternative
+                          ? const Color(0xFFB45309)
+                          : _halykGreen,
+                    ),
+                    _TinyBadge(
+                      text: line.product.stock > 0
+                          ? 'В наличии: ${line.product.stock}'
+                          : 'Нет в наличии',
+                      color: line.product.stock > 0
+                          ? const Color(0xFFE8F7EF)
+                          : const Color(0xFFFEE2E2),
+                      textColor: line.product.stock > 0
+                          ? _halykGreen
+                          : const Color(0xFFB91C1C),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
                 Text(
-                  '${line.product.form} · ${line.product.pharmacyName}',
+                  '${line.product.form} · ${line.product.dosage} · ${line.product.pharmacyName}',
                   style: const TextStyle(color: _muted, fontSize: 12),
                 ),
+                if (line.isAlternative) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    line.reason,
+                    style: const TextStyle(
+                      color: Color(0xFF92400E),
+                      fontSize: 12,
+                      height: 1.35,
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 8),
                 Row(
                   children: [
@@ -1448,6 +2301,73 @@ class _DraftCartLine extends StatelessWidget {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _MissingMedicineTile extends StatelessWidget {
+  const _MissingMedicineTile({required this.suggestion});
+
+  final MissingMedicineSuggestion suggestion;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFFBEB),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFFDE68A)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.info_outline, color: Color(0xFFB45309)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              '${suggestion.medicine.medicineName} не найден в Appteka. Категория: ${suggestion.purpose}. Добавьте вручную или уточните замену у врача/фармацевта.',
+              style: const TextStyle(
+                color: Color(0xFF78350F),
+                fontWeight: FontWeight.w700,
+                height: 1.35,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TinyBadge extends StatelessWidget {
+  const _TinyBadge({
+    required this.text,
+    required this.color,
+    required this.textColor,
+  });
+
+  final String text;
+  final Color color;
+  final Color textColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          color: textColor,
+          fontSize: 11,
+          fontWeight: FontWeight.w900,
+        ),
       ),
     );
   }

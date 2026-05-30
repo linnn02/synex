@@ -41,6 +41,7 @@ void main() {
       MaterialApp(
         home: HomeScreen(
           apiService: _FakeHomeApiService(),
+          enablePrescriptionPolling: false,
           user: const AppUser(
             id: 'patient-1',
             fullName: 'Айдана Смагулова',
