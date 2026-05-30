@@ -79,12 +79,14 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                       ),
                       const SizedBox(width: 14),
-                      const Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('Halyk Health', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900)),
-                          Text('Раздел здоровья в Halyk Super App'),
-                        ],
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Halyk Health', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900)),
+                            Text('Раздел здоровья в Halyk Super App'),
+                          ],
+                        ),
                       ),
                     ],
                   ),
