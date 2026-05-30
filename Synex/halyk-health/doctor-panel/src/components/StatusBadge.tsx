@@ -7,6 +7,7 @@ type StatusBadgeProps = {
 const labels: Record<string, string> = {
   PENDING: "Новая",
   CONFIRMED: "Подтверждена",
+  RESCHEDULED: "Перенесена",
   COMPLETED: "Завершена",
   CANCELLED: "Отменена",
   DRAFT: "Черновик",
@@ -17,4 +18,3 @@ const labels: Record<string, string> = {
 export function StatusBadge({ status }: StatusBadgeProps) {
   return <span className={`status-badge ${status.toLowerCase()}`}>{labels[status] || status}</span>;
 }
-

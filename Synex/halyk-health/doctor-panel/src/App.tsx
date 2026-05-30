@@ -18,6 +18,14 @@ export function App() {
   const [loading, setLoading] = useState(false);
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
 
+  const pendingCount = appointments.filter((item) => item.status === "PENDING").length;
+  const prescriptionsCount = prescriptions.length;
+  const todayCount = appointments.filter((item) => {
+    const date = new Date(item.appointmentDate);
+    const now = new Date();
+    return date.toDateString() === now.toDateString();
+  }).length;
+
   async function loadDoctorData() {
     setLoading(true);
     try {
@@ -115,6 +123,8 @@ export function App() {
       <DoctorDashboard
         appointments={appointments}
         prescriptions={prescriptions}
+        onStatusChange={handleStatusChange}
+        onCreatePrescription={setSelectedAppointment}
         onOpenAppointments={() => setView("appointments")}
         onOpenPrescriptions={() => setView("prescriptions")}
       />
@@ -126,9 +136,18 @@ export function App() {
   }
 
   return (
-    <AppShell user={user} view={view} onViewChange={setView} onLogout={handleLogout}>
+    <AppShell
+      user={user}
+      view={view}
+      loading={loading}
+      pendingCount={pendingCount}
+      todayCount={todayCount}
+      prescriptionsCount={prescriptionsCount}
+      onViewChange={setView}
+      onRefresh={loadDoctorData}
+      onLogout={handleLogout}
+    >
       {content}
     </AppShell>
   );
 }
-

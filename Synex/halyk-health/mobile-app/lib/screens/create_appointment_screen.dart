@@ -3,15 +3,28 @@ import 'package:intl/intl.dart';
 
 import '../models/api_models.dart';
 import '../services/api_service.dart';
+import '../services/appointment_service.dart';
+import '../widgets/appointment_success_card.dart';
+import '../widgets/appointment_summary.dart';
+import '../widgets/clinic_info_card.dart';
+import '../widgets/doctor_info_card.dart';
+import '../widgets/patient_info_card.dart';
+import '../widgets/reason_selector.dart';
+import '../widgets/slot_picker.dart';
 
-const _green = Color(0xFF006B5B);
-const _greenLight = Color(0xFFE6F4F1);
-const _bg = Color(0xFFF5F7F8);
+const _green = Color(0xFF007F5F);
+const _dark = Color(0xFF073E35);
+const _bg = Color(0xFFF4F7F8);
 
 class CreateAppointmentScreen extends StatefulWidget {
-  const CreateAppointmentScreen({super.key, required this.apiService});
+  const CreateAppointmentScreen({
+    super.key,
+    required this.apiService,
+    this.currentUser,
+  });
 
   final ApiService apiService;
+  final AppUser? currentUser;
 
   @override
   State<CreateAppointmentScreen> createState() =>
@@ -19,392 +32,496 @@ class CreateAppointmentScreen extends StatefulWidget {
 }
 
 class _CreateAppointmentScreenState extends State<CreateAppointmentScreen> {
-  final _reasons = const [
-    'Плановый осмотр',
-    'Температура и слабость',
-    'Боль в горле',
-    'Головная боль',
-    'Повторный приём',
-  ];
-  final _times = const [
-    '09:00',
-    '09:30',
-    '10:00',
-    '10:30',
-    '11:00',
-    '11:30',
-    '14:00',
-    '14:30',
-    '15:00',
-    '15:30',
-    '16:00',
-    '16:30',
-  ];
-
   bool _loading = true;
   bool _submitting = false;
   String? _error;
+
+  AppUser? _user;
   List<Clinic> _clinics = [];
   List<DoctorProfile> _doctors = [];
-  Clinic? _clinic;
-  DoctorProfile? _doctor;
-  DateTime? _date;
-  String? _time;
-  String? _reason;
-  Appointment? _created;
+  Clinic? _selectedClinic;
+  DoctorProfile? _selectedDoctor;
+  List<AppointmentSlot> _slots = [];
+
+  String _selectedReason = '';
+  String? _selectedDate;
+  String? _selectedTime;
+  Appointment? _createdAppointment;
 
   @override
   void initState() {
     super.initState();
-    _loadClinics();
+    _load();
   }
 
-  Future<void> _loadClinics() async {
+  Future<void> _load() async {
     setState(() {
       _loading = true;
       _error = null;
+      _selectedDate = null;
+      _selectedTime = null;
+      _selectedReason = '';
     });
 
     try {
+      final user = widget.currentUser ?? await widget.apiService.me();
       final clinics = await widget.apiService.getClinics();
-      if (!mounted) return;
+      final preferredClinic = _pickPreferredClinic(clinics);
+      final doctors = preferredClinic == null
+          ? <DoctorProfile>[]
+          : await widget.apiService.getClinicDoctors(preferredClinic.id);
 
+      if (!mounted) return;
       setState(() {
+        _user = user;
         _clinics = clinics;
-        _clinic = clinics.isEmpty ? null : clinics.first;
+        _selectedClinic = preferredClinic;
+        _doctors = doctors;
+        _selectedDoctor = _pickPreferredDoctor(doctors);
+        _slots = _buildSlots();
+        _loading = false;
       });
-
-      if (_clinic != null) {
-        await _loadDoctors(_clinic!.id);
-      }
-
-      if (!mounted) return;
-      setState(() => _loading = false);
-    } catch (e) {
+    } catch (error) {
       if (!mounted) return;
       setState(() {
-        _error = e.toString().replaceFirst('Exception: ', '');
+        _error = error.toString().replaceFirst('Exception: ', '');
         _loading = false;
       });
     }
   }
 
-  Future<void> _loadDoctors(String clinicId) async {
-    final doctors = await widget.apiService.getClinicDoctors(clinicId);
-    if (!mounted) return;
+  Clinic? _pickPreferredClinic(List<Clinic> clinics) {
+    if (clinics.isEmpty) return null;
+    return clinics.firstWhere(
+      (clinic) => clinic.name.toLowerCase().contains('halyk'),
+      orElse: () => clinics.first,
+    );
+  }
+
+  DoctorProfile? _pickPreferredDoctor(List<DoctorProfile> doctors) {
+    if (doctors.isEmpty) return null;
+    return doctors.firstWhere(
+      (doctor) => doctor.specialization.toLowerCase().contains('терапевт'),
+      orElse: () => doctors.first,
+    );
+  }
+
+  List<AppointmentSlot> _buildSlots() {
+    final now = DateTime.now();
+    final times = [
+      '09:00',
+      '09:30',
+      '10:00',
+      '10:30',
+      '11:00',
+      '11:30',
+      '14:00',
+      '14:30',
+      '15:00',
+      '15:30',
+      '16:00',
+      '16:30',
+    ];
+
+    final slots = <AppointmentSlot>[];
+    for (var day = 1; day <= 5; day++) {
+      final date = now.add(Duration(days: day));
+      final dateText = DateFormat('dd.MM.yyyy').format(date);
+      for (var index = 0; index < times.length; index++) {
+        slots.add(
+          AppointmentSlot(
+            id: '$dateText-${times[index]}',
+            doctorId: _selectedDoctor?.user.id ?? '',
+            date: dateText,
+            time: times[index],
+            isAvailable: (day + index) % 5 != 0,
+          ),
+        );
+      }
+    }
+    return slots;
+  }
+
+  Future<void> _changeClinic(Clinic clinic) async {
     setState(() {
-      _doctors = doctors;
-      _doctor = doctors.isEmpty ? null : doctors.first;
+      _selectedClinic = clinic;
+      _selectedDoctor = null;
+      _doctors = [];
+      _slots = [];
+      _selectedDate = null;
+      _selectedTime = null;
+    });
+
+    try {
+      final doctors = await widget.apiService.getClinicDoctors(clinic.id);
+      if (!mounted) return;
+      setState(() {
+        _doctors = doctors;
+        _selectedDoctor = _pickPreferredDoctor(doctors);
+        _slots = _buildSlots();
+      });
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.toString().replaceFirst('Exception: ', ''))),
+      );
+    }
+  }
+
+  void _changeDoctor(DoctorProfile doctor) {
+    setState(() {
+      _selectedDoctor = doctor;
+      _selectedDate = null;
+      _selectedTime = null;
+      _slots = _buildSlots();
     });
   }
 
-  Future<void> _pickDate() async {
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: DateTime.now().add(const Duration(days: 1)),
-      firstDate: DateTime.now().add(const Duration(days: 1)),
-      lastDate: DateTime.now().add(const Duration(days: 60)),
-      builder: (context, child) => Theme(
-        data: Theme.of(context).copyWith(
-          colorScheme: const ColorScheme.light(primary: _green),
-        ),
-        child: child!,
-      ),
-    );
-    if (picked != null) {
-      setState(() => _date = picked);
-    }
+  void _onSlotSelected(String date, String time) {
+    setState(() {
+      _selectedDate = date;
+      _selectedTime = time;
+    });
   }
 
   Future<void> _submit() async {
-    if (_clinic == null ||
-        _doctor == null ||
-        _date == null ||
-        _time == null ||
-        _reason == null) {
+    if (_selectedClinic == null ||
+        _selectedDoctor == null ||
+        _selectedDate == null ||
+        _selectedTime == null ||
+        _selectedReason.isEmpty) {
       return;
     }
 
-    final parts = _time!.split(':');
+    final dateParts = _selectedDate!.split('.');
+    final timeParts = _selectedTime!.split(':');
     final appointmentDate = DateTime(
-      _date!.year,
-      _date!.month,
-      _date!.day,
-      int.parse(parts[0]),
-      int.parse(parts[1]),
+      int.parse(dateParts[2]),
+      int.parse(dateParts[1]),
+      int.parse(dateParts[0]),
+      int.parse(timeParts[0]),
+      int.parse(timeParts[1]),
     );
 
     setState(() => _submitting = true);
     try {
       final appointment = await widget.apiService.createAppointment(
-        doctorId: _doctor!.user.id,
-        clinicId: _clinic!.id,
+        doctorId: _selectedDoctor!.user.id,
+        clinicId: _selectedClinic!.id,
         appointmentDate: appointmentDate,
-        complaint: _reason!,
+        complaint: _selectedReason,
       );
       if (!mounted) return;
       setState(() {
-        _created = appointment;
+        _createdAppointment = appointment;
         _submitting = false;
       });
-    } catch (e) {
+    } catch (error) {
       if (!mounted) return;
       setState(() => _submitting = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+        SnackBar(content: Text(error.toString().replaceFirst('Exception: ', ''))),
       );
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final enabled = _selectedReason.isNotEmpty &&
+        _selectedDate != null &&
+        _selectedTime != null &&
+        !_submitting;
+
     return Scaffold(
       backgroundColor: _bg,
-      appBar: AppBar(title: const Text('Новая запись')),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator(color: _green))
-          : _error != null
-              ? _ErrorState(error: _error!, onRetry: _loadClinics)
-              : _created != null
-                  ? _SuccessState(appointment: _created!)
-                  : _buildForm(),
+      appBar: AppBar(
+        title: const Text(
+          'Запись к врачу',
+          style: TextStyle(fontWeight: FontWeight.w900),
+        ),
+        backgroundColor: Colors.white,
+        foregroundColor: _dark,
+        elevation: 0,
+      ),
+      body: _createdAppointment != null
+          ? _buildSuccess()
+          : _loading
+              ? const _LoadingState()
+              : _error != null
+                  ? _ErrorState(error: _error!, onRetry: _load)
+                  : _buildForm(enabled),
     );
   }
 
-  Widget _buildForm() {
-    final canSubmit = _clinic != null &&
-        _doctor != null &&
-        _date != null &&
-        _time != null &&
-        _reason != null &&
-        !_submitting;
+  Widget _buildForm(bool enabled) {
+    final user = _user!;
+    final clinic = _selectedClinic!;
+    final doctor = _selectedDoctor!;
+    final medCarePatient = MedCarePatient(
+      id: user.id,
+      fullName: user.fullName,
+      iin: user.iin ?? 'Не указан',
+      phone: user.phone,
+      insuranceStatus: 'active',
+      clinicId: clinic.id,
+      doctorId: doctor.user.id,
+    );
+    final medCareClinic = _clinicAdapter(clinic);
+    final medCareDoctor = _doctorAdapter(doctor);
 
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
       children: [
         Container(
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(8),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.04),
-                blurRadius: 14,
-                offset: const Offset(0, 4),
-              ),
-            ],
+            gradient: const LinearGradient(
+              colors: [_dark, _green],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(22),
           ),
-          child: Column(
+          child: const Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'Записаться к врачу',
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
-              ),
-              const SizedBox(height: 6),
-              const Text(
-                'Выберите поликлинику, врача, дату и время приёма',
-                style: TextStyle(color: Color(0xFF60727F), height: 1.35),
-              ),
-              const SizedBox(height: 18),
-              DropdownButtonFormField<Clinic>(
-                value: _clinic,
-                decoration: const InputDecoration(labelText: 'Поликлиника'),
-                items: _clinics
-                    .map(
-                      (clinic) => DropdownMenuItem(
-                        value: clinic,
-                        child: Text(clinic.name),
-                      ),
-                    )
-                    .toList(),
-                onChanged: (clinic) async {
-                  if (clinic == null) return;
-                  setState(() {
-                    _clinic = clinic;
-                    _doctor = null;
-                    _doctors = [];
-                  });
-                  await _loadDoctors(clinic.id);
-                },
-              ),
-              if (_clinic != null) ...[
-                const SizedBox(height: 8),
-                Text(
-                  _clinic!.address,
-                  style:
-                      const TextStyle(color: Color(0xFF60727F), fontSize: 13),
+              Text(
+                'Halyk MedCare',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 23,
+                  fontWeight: FontWeight.w900,
                 ),
-              ],
-              const SizedBox(height: 14),
-              DropdownButtonFormField<DoctorProfile>(
-                value: _doctor,
-                decoration: const InputDecoration(labelText: 'Врач'),
-                items: _doctors
-                    .map(
-                      (doctor) => DropdownMenuItem(
-                        value: doctor,
-                        child: Text(
-                          '${doctor.user.fullName} · ${doctor.specialization}',
-                        ),
-                      ),
-                    )
-                    .toList(),
-                onChanged: (doctor) => setState(() => _doctor = doctor),
               ),
-              const SizedBox(height: 14),
-              DropdownButtonFormField<String>(
-                value: _reason,
-                decoration:
-                    const InputDecoration(labelText: 'Причина обращения'),
-                items: _reasons
-                    .map(
-                      (reason) => DropdownMenuItem(
-                        value: reason,
-                        child: Text(reason),
-                      ),
-                    )
-                    .toList(),
-                onChanged: (reason) => setState(() => _reason = reason),
-              ),
-              const SizedBox(height: 16),
-              _DateButton(date: _date, onTap: _pickDate),
-              const SizedBox(height: 16),
-              const Text(
-                'Время',
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: _times
-                    .map(
-                      (time) => ChoiceChip(
-                        label: Text(time),
-                        selected: _time == time,
-                        selectedColor: _greenLight,
-                        checkmarkColor: _green,
-                        onSelected: (_) => setState(() => _time = time),
-                      ),
-                    )
-                    .toList(),
+              SizedBox(height: 7),
+              Text(
+                'Подберём прикреплённую поликлинику, врача и ближайшие слоты. Заявка уйдёт в кабинет врача.',
+                style: TextStyle(color: Color(0xD9FFFFFF), height: 1.42),
               ),
             ],
           ),
         ),
-        const SizedBox(height: 18),
+        const SizedBox(height: 16),
+        PatientInfoCard(patient: medCarePatient),
+        const SizedBox(height: 16),
+        _SelectionCard(
+          title: 'Поликлиника',
+          icon: Icons.local_hospital_outlined,
+          child: DropdownButtonFormField<Clinic>(
+            key: ValueKey(_selectedClinic?.id ?? 'clinic'),
+            initialValue: _selectedClinic,
+            decoration: const InputDecoration(labelText: 'Выберите клинику'),
+            items: _clinics
+                .map(
+                  (clinic) => DropdownMenuItem(
+                    value: clinic,
+                    child: Text(
+                      clinic.name,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                )
+                .toList(),
+            onChanged: (clinic) {
+              if (clinic != null) _changeClinic(clinic);
+            },
+          ),
+        ),
+        const SizedBox(height: 12),
+        ClinicInfoCard(clinic: medCareClinic),
+        const SizedBox(height: 16),
+        _SelectionCard(
+          title: 'Лечащий врач',
+          icon: Icons.medical_services_outlined,
+          child: DropdownButtonFormField<DoctorProfile>(
+            key: ValueKey(_selectedDoctor?.id ?? 'doctor'),
+            initialValue: _selectedDoctor,
+            decoration: const InputDecoration(labelText: 'Выберите врача'),
+            items: _doctors
+                .map(
+                  (doctor) => DropdownMenuItem(
+                    value: doctor,
+                    child: Text(
+                      '${doctor.user.fullName} · ${doctor.specialization}',
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                )
+                .toList(),
+            onChanged: (doctor) {
+              if (doctor != null) _changeDoctor(doctor);
+            },
+          ),
+        ),
+        const SizedBox(height: 12),
+        DoctorInfoCard(doctor: medCareDoctor),
+        const SizedBox(height: 16),
+        ReasonSelector(onChanged: (value) => setState(() => _selectedReason = value)),
+        const SizedBox(height: 16),
+        SlotPicker(slots: _slots, onSelected: _onSlotSelected),
+        if (_selectedDate != null && _selectedTime != null) ...[
+          const SizedBox(height: 16),
+          AppointmentSummary(
+            patient: medCarePatient,
+            clinic: medCareClinic,
+            doctor: medCareDoctor,
+            date: _selectedDate!,
+            time: _selectedTime!,
+            reason: _selectedReason,
+          ),
+        ],
+        const SizedBox(height: 20),
         SizedBox(
-          height: 52,
-          child: FilledButton.icon(
-            onPressed: canSubmit ? _submit : null,
+          height: 56,
+          child: FilledButton(
+            onPressed: enabled ? _submit : null,
             style: FilledButton.styleFrom(
               backgroundColor: _green,
-              disabledBackgroundColor: const Color(0xFFCFDDE2),
+              disabledBackgroundColor: const Color(0xFFCBD5E1),
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8)),
+                borderRadius: BorderRadius.circular(18),
+              ),
             ),
-            icon: _submitting
+            child: _submitting
                 ? const SizedBox(
-                    width: 18,
-                    height: 18,
+                    width: 22,
+                    height: 22,
                     child: CircularProgressIndicator(
-                      strokeWidth: 2,
                       color: Colors.white,
+                      strokeWidth: 2.4,
                     ),
                   )
-                : const Icon(Icons.check),
-            label: Text(_submitting ? 'Отправляем...' : 'Отправить заявку'),
+                : const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.check_circle_outline),
+                      SizedBox(width: 10),
+                      Text(
+                        'Отправить заявку',
+                        style: TextStyle(fontWeight: FontWeight.w900),
+                      ),
+                    ],
+                  ),
           ),
         ),
       ],
     );
   }
+
+  Widget _buildSuccess() {
+    final clinic = _clinicAdapter(_selectedClinic!);
+    final doctor = _doctorAdapter(_selectedDoctor!);
+    final appointment = MedCareAppointment(
+      id: _createdAppointment!.id,
+      patientId: _user!.id,
+      doctorId: _selectedDoctor!.user.id,
+      clinicId: _selectedClinic!.id,
+      reason: _createdAppointment!.complaint,
+      date: DateFormat('dd.MM.yyyy').format(_createdAppointment!.appointmentDate.toLocal()),
+      time: DateFormat('HH:mm').format(_createdAppointment!.appointmentDate.toLocal()),
+      status: 'Ожидает подтверждения',
+      createdAt: DateTime.now(),
+    );
+
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(18),
+        child: AppointmentSuccessCard(
+          appointment: appointment,
+          clinic: clinic,
+          doctor: doctor,
+          onClose: () => Navigator.pop(context),
+        ),
+      ),
+    );
+  }
+
+  MedCareClinic _clinicAdapter(Clinic clinic) {
+    return MedCareClinic(
+      id: clinic.id,
+      name: clinic.name,
+      address: '${clinic.address}, ${clinic.city}',
+      phone: clinic.phone ?? '+7 727 000 00 00',
+      status: 'Прикрепление в Halyk Health',
+    );
+  }
+
+  MedCareDoctor _doctorAdapter(DoctorProfile doctor) {
+    return MedCareDoctor(
+      id: doctor.user.id,
+      fullName: doctor.user.fullName,
+      specialization: doctor.specialization,
+      cabinet: doctor.roomNumber ?? 'уточняется',
+      clinicId: doctor.clinic.id,
+      experience: 12,
+      rating: 4.9,
+    );
+  }
 }
 
-class _DateButton extends StatelessWidget {
-  const _DateButton({required this.date, required this.onTap});
+class _SelectionCard extends StatelessWidget {
+  const _SelectionCard({
+    required this.title,
+    required this.icon,
+    required this.child,
+  });
 
-  final DateTime? date;
-  final VoidCallback onTap;
+  final String title;
+  final IconData icon;
+  final Widget child;
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-        decoration: BoxDecoration(
-          color: date == null ? Colors.white : _greenLight,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: date == null ? const Color(0xFFCFDDE2) : _green,
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.035),
+            blurRadius: 12,
+            offset: const Offset(0, 5),
           ),
-        ),
-        child: Row(
-          children: [
-            const Icon(Icons.calendar_today_outlined, color: _green, size: 18),
-            const SizedBox(width: 10),
-            Text(
-              date == null
-                  ? 'Выбрать дату'
-                  : DateFormat('dd MMMM yyyy', 'ru').format(date!),
-              style: const TextStyle(fontWeight: FontWeight.w700),
-            ),
-          ],
-        ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: _green),
+              const SizedBox(width: 8),
+              Text(
+                title,
+                style: const TextStyle(fontWeight: FontWeight.w900),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          child,
+        ],
       ),
     );
   }
 }
 
-class _SuccessState extends StatelessWidget {
-  const _SuccessState({required this.appointment});
-
-  final Appointment appointment;
+class _LoadingState extends StatelessWidget {
+  const _LoadingState();
 
   @override
   Widget build(BuildContext context) {
-    final localDate = appointment.appointmentDate.toLocal();
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 72,
-              height: 72,
-              decoration: BoxDecoration(
-                color: _greenLight,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: const Icon(Icons.check_circle, color: _green, size: 42),
-            ),
-            const SizedBox(height: 18),
-            const Text(
-              'Заявка создана',
-              style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '${appointment.doctor.fullName}\n${DateFormat('dd MMMM yyyy, HH:mm', 'ru').format(localDate)}',
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: Color(0xFF60727F), height: 1.4),
-            ),
-            const SizedBox(height: 22),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                onPressed: () => Navigator.pop(context),
-                style: FilledButton.styleFrom(backgroundColor: _green),
-                child: const Text('Готово'),
-              ),
-            ),
-          ],
-        ),
+    return const Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          CircularProgressIndicator(color: _green),
+          SizedBox(height: 16),
+          Text(
+            'Подбираем поликлинику и врача...',
+            style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.w700),
+          ),
+        ],
       ),
     );
   }
@@ -420,24 +537,23 @@ class _ErrorState extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(32),
+        padding: const EdgeInsets.all(28),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.cloud_off_outlined,
-                size: 56, color: Color(0xFFCFD8DC)),
-            const SizedBox(height: 16),
+            const Icon(Icons.cloud_off_outlined, size: 58, color: Color(0xFF94A3B8)),
+            const SizedBox(height: 14),
             const Text(
-              'Не удалось загрузить данные',
-              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+              'Не удалось загрузить запись',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
             ),
             const SizedBox(height: 8),
             Text(
               error,
               textAlign: TextAlign.center,
-              style: const TextStyle(color: Color(0xFF60727F)),
+              style: const TextStyle(color: Color(0xFF64748B), height: 1.35),
             ),
-            const SizedBox(height: 22),
+            const SizedBox(height: 18),
             FilledButton.icon(
               onPressed: onRetry,
               icon: const Icon(Icons.refresh),

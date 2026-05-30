@@ -1,5 +1,5 @@
 export type UserRole = "PATIENT" | "DOCTOR" | "ADMIN";
-export type AppointmentStatus = "PENDING" | "CONFIRMED" | "COMPLETED" | "CANCELLED";
+export type AppointmentStatus = "PENDING" | "CONFIRMED" | "RESCHEDULED" | "COMPLETED" | "CANCELLED";
 export type PrescriptionStatus = "DRAFT" | "SENT" | "ACTIVE" | "COMPLETED";
 
 export type User = {
@@ -112,6 +112,15 @@ export const api = {
     diagnosis: string;
     rawText: string;
     doctorComment?: string;
+    medicines?: Array<{
+      medicineName: string;
+      dosage: string;
+      frequency: string;
+      duration: string;
+      instruction: string;
+      quantityNeeded: number;
+      activeSubstance: string;
+    }>;
   }) {
     return request<Prescription>("/prescriptions", {
       method: "POST",
@@ -125,4 +134,3 @@ export const api = {
     return request<Prescription[]>("/doctor/prescriptions");
   }
 };
-

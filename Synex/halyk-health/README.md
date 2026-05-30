@@ -31,7 +31,7 @@ Monorepo:
 - Mobile: Flutter / Dart, `http`, Material 3.
 - Doctor panel: React, TypeScript, Vite, lucide-react.
 - Backend: Node.js, Express, TypeScript, Prisma, JWT, Swagger.
-- Database: PostgreSQL.
+- Database: PostgreSQL locally or Supabase PostgreSQL for shared team access.
 - AI: Qwen3 adapter with mock fallback when `QWEN_API_KEY` is empty.
 - Deployment: Docker and docker-compose.
 
@@ -55,6 +55,21 @@ Backend URL: `http://localhost:4000`
 Swagger: `http://localhost:4000/api/docs`
 
 OpenAPI JSON: `http://localhost:4000/api/openapi.json`
+
+## Supabase Team Database
+
+For shared development, create a Supabase project and put its PostgreSQL URL into `backend/.env` as `DATABASE_URL`.
+
+```bash
+cd /Users/justalim/projects/Synex/halyk-health/backend
+cp .env.example .env
+# replace DATABASE_URL with the Supabase Postgres connection string
+npm run prisma:generate
+npm run prisma:push
+npm run prisma:seed
+```
+
+See `docs/Supabase Setup.md` for the full team workflow. Flutter and React must keep using the backend API only; Supabase credentials stay on the backend.
 
 ## Docker Run
 
@@ -198,4 +213,3 @@ Schedule:
 - Add audit logging for doctor actions and AI analysis.
 - Add e2e tests for patient and doctor journeys.
 - Add CI pipeline and production Docker images.
-

@@ -5,6 +5,9 @@ class AppUser {
     required this.email,
     required this.phone,
     required this.role,
+    this.iin,
+    this.birthDate,
+    this.address,
   });
 
   final String id;
@@ -12,6 +15,9 @@ class AppUser {
   final String email;
   final String phone;
   final String role;
+  final String? iin;
+  final DateTime? birthDate;
+  final String? address;
 
   factory AppUser.fromJson(Map<String, dynamic> json) {
     return AppUser(
@@ -20,6 +26,11 @@ class AppUser {
       email: json['email'] as String,
       phone: json['phone'] as String,
       role: json['role'] as String,
+      iin: json['iin'] as String?,
+      birthDate: json['birthDate'] == null
+          ? null
+          : DateTime.parse(json['birthDate'] as String),
+      address: json['address'] as String?,
     );
   }
 }
@@ -30,12 +41,14 @@ class Clinic {
     required this.name,
     required this.city,
     required this.address,
+    this.phone,
   });
 
   final String id;
   final String name;
   final String city;
   final String address;
+  final String? phone;
 
   factory Clinic.fromJson(Map<String, dynamic> json) {
     return Clinic(
@@ -43,6 +56,7 @@ class Clinic {
       name: json['name'] as String,
       city: json['city'] as String,
       address: json['address'] as String,
+      phone: json['phone'] as String?,
     );
   }
 }
@@ -53,12 +67,16 @@ class DoctorProfile {
     required this.specialization,
     required this.user,
     required this.clinic,
+    this.roomNumber,
+    this.scheduleText,
   });
 
   final String id;
   final String specialization;
   final AppUser user;
   final Clinic clinic;
+  final String? roomNumber;
+  final String? scheduleText;
 
   factory DoctorProfile.fromJson(Map<String, dynamic> json) {
     return DoctorProfile(
@@ -66,6 +84,8 @@ class DoctorProfile {
       specialization: json['specialization'] as String,
       user: AppUser.fromJson(json['user'] as Map<String, dynamic>),
       clinic: Clinic.fromJson(json['clinic'] as Map<String, dynamic>),
+      roomNumber: json['roomNumber'] as String?,
+      scheduleText: json['scheduleText'] as String?,
     );
   }
 }

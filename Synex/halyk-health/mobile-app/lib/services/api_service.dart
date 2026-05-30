@@ -23,6 +23,11 @@ class ApiService {
     return AppUser.fromJson(response['user'] as Map<String, dynamic>);
   }
 
+  Future<AppUser> me() async {
+    final response = await _request('/auth/me');
+    return AppUser.fromJson(response as Map<String, dynamic>);
+  }
+
   Future<List<Clinic>> getClinics() async {
     final response =
         await _request('/clinics', authenticated: false) as List<dynamic>;
