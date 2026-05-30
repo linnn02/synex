@@ -141,6 +141,28 @@ class ApiService {
         .toList();
   }
 
+  Future<String> explainPrescription(String prescriptionId) async {
+    final response = await _request(
+      '/ai/explain-prescription',
+      method: 'POST',
+      body: {'prescriptionId': prescriptionId},
+    ) as Map<String, dynamic>;
+    return response['explanation'] as String;
+  }
+
+  Future<List<MedicationScheduleItem>> getPrescriptionSchedule(
+    String prescriptionId,
+  ) async {
+    final response =
+        await _request('/prescriptions/$prescriptionId/schedule') as List<dynamic>;
+    return response
+        .map(
+          (item) =>
+              MedicationScheduleItem.fromJson(item as Map<String, dynamic>),
+        )
+        .toList();
+  }
+
   Future<List<MarketProduct>> getMarketProducts() async {
     final response = await _request('/market/products', authenticated: false)
         as List<dynamic>;

@@ -128,6 +128,12 @@ export function CreatePrescriptionPage({ appointment, onCancel, onCreated }: Cre
   const [medicines, setMedicines] = useState<MedicineDraft[]>(templates[1].medicines);
   const [analyzeAfterCreate, setAnalyzeAfterCreate] = useState(true);
   const [loading, setLoading] = useState(false);
+  const [validating, setValidating] = useState(false);
+  const [aiCheckResult, setAiCheckResult] = useState<{
+    isComplete: boolean;
+    warnings: string[];
+    suggestions: string[];
+  } | null>(null);
   const [error, setError] = useState("");
 
   const validMedicines = medicines.filter(
@@ -157,6 +163,20 @@ export function CreatePrescriptionPage({ appointment, onCancel, onCreated }: Cre
 
   function removeMedicine(index: number) {
     setMedicines((current) => current.filter((_, itemIndex) => itemIndex !== index));
+  }
+
+  async function handleAiCheck() {
+    if (!rawText.trim()) return;
+    setValidating(true);
+    setAiCheckResult(null);
+    try {
+      const result = await api.validatePrescription(rawText);
+      setAiCheckResult(result);
+    } catch (checkError) {
+      console.error(checkError);
+    } finally {
+      setValidating(false);
+    }
   }
 
   async function handleSubmit(event: FormEvent) {
@@ -257,8 +277,49 @@ export function CreatePrescriptionPage({ appointment, onCancel, onCreated }: Cre
 
           <label>
             Текст назначения врача
+            <div className="textarea-header-actions">
+              <button
+                type="button"
+                className="ai-check-button"
+                onClick={handleAiCheck}
+                disabled={validating || !rawText.trim()}
+              >
+                {validating ? (
+                  "Проверяем..."
+                ) : (
+                  <>
+                    <Sparkles size={16} />
+                    Проверить через ИИ
+                  </>
+                )}
+              </button>
+            </div>
             <textarea value={rawText} onChange={(event) => setRawText(event.target.value)} rows={6} />
           </label>
+
+          {aiCheckResult && (
+            <div className={`ai-validation-box ${aiCheckResult.isComplete ? "complete" : "incomplete"}`}>
+              <div className="validation-header">
+                {aiCheckResult.isComplete ? <Plus size={18} /> : <FileText size={18} />}
+                <strong>{aiCheckResult.isComplete ? "Назначение заполнено корректно" : "Рекомендации ИИ по заполнению"}</strong>
+              </div>
+              
+              {aiCheckResult.warnings.length > 0 && (
+                <ul className="validation-warnings">
+                  {aiCheckResult.warnings.map((w, i) => <li key={i}>{w}</li>)}
+                </ul>
+              )}
+              
+              {aiCheckResult.suggestions.length > 0 && (
+                <div className="validation-suggestions">
+                  <strong>Что уточнить:</strong>
+                  <ul>
+                    {aiCheckResult.suggestions.map((s, i) => <li key={i}>{s}</li>)}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
 
           <label>
             Комментарий врача

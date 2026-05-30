@@ -27,8 +27,10 @@ class PrescriptionDetailScreen extends StatefulWidget {
 class _PrescriptionDetailScreenState extends State<PrescriptionDetailScreen> {
   late Prescription _prescription;
   List<MedicineProductGroup> _groups = [];
+  List<MedicationScheduleItem> _scheduleItems = [];
   bool _analyzing = false;
   bool _loadingProducts = false;
+  bool _loadingSchedule = false;
 
   @override
   void initState() {
@@ -36,6 +38,7 @@ class _PrescriptionDetailScreenState extends State<PrescriptionDetailScreen> {
     _prescription = widget.prescription;
     if (_prescription.medicines.isNotEmpty) {
       _loadProducts();
+      _loadSchedule();
     }
   }
 
@@ -47,6 +50,7 @@ class _PrescriptionDetailScreenState extends State<PrescriptionDetailScreen> {
       if (!mounted) return;
       setState(() => _prescription = analyzed);
       await _loadProducts();
+      await _loadSchedule();
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -55,6 +59,36 @@ class _PrescriptionDetailScreenState extends State<PrescriptionDetailScreen> {
     } finally {
       if (mounted) setState(() => _analyzing = false);
     }
+  }
+
+  Future<void> _loadSchedule() async {
+    setState(() => _loadingSchedule = true);
+    try {
+      final schedule =
+          await widget.apiService.getPrescriptionSchedule(_prescription.id);
+      if (!mounted) return;
+      setState(() {
+        _scheduleItems = schedule;
+        _loadingSchedule = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loadingSchedule = false);
+    }
+  }
+
+  Future<void> _markTaken(String id) async {
+    try {
+      await widget.apiService.markScheduleTaken(id);
+      await _loadSchedule();
+    } catch (_) {}
+  }
+
+  Future<void> _markMissed(String id) async {
+    try {
+      await widget.apiService.markScheduleMissed(id);
+      await _loadSchedule();
+    } catch (_) {}
   }
 
   Future<void> _loadProducts() async {
@@ -81,6 +115,18 @@ class _PrescriptionDetailScreenState extends State<PrescriptionDetailScreen> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('${product.title} добавлен в корзину')),
+    );
+  }
+
+  void _openChat() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _AiChatSheet(
+        apiService: widget.apiService,
+        prescription: _prescription,
+      ),
     );
   }
 
@@ -154,6 +200,43 @@ class _PrescriptionDetailScreenState extends State<PrescriptionDetailScreen> {
           ),
           const SizedBox(height: 18),
           _SectionHeader(
+            title: 'График лечения',
+            action: _loadingSchedule ? '...' : 'Сегодня',
+            onAction: () {},
+          ),
+          const SizedBox(height: 10),
+          if (_loadingSchedule && _scheduleItems.isEmpty)
+            const Center(child: CircularProgressIndicator(color: _green))
+          else if (_scheduleItems.isEmpty)
+            const _SmallEmpty(
+              icon: Icons.calendar_today_outlined,
+              title: 'График пуст',
+              text: 'Расписание появится после проведения AI-анализа.',
+            )
+          else
+            _PrescriptionScheduleBlock(
+              items: _scheduleItems,
+              onTaken: _markTaken,
+              onMissed: _markMissed,
+            ),
+          const SizedBox(height: 18),
+          SizedBox(
+            height: 52,
+            child: OutlinedButton.icon(
+              onPressed: _openChat,
+              icon: const Icon(Icons.chat_bubble_outline, color: _green),
+              label: const Text('Спросить ИИ по назначению',
+                  style: TextStyle(color: _green)),
+              style: OutlinedButton.styleFrom(
+                side: const BorderSide(color: _green, width: 1.5),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+          _SectionHeader(
             title: 'Лекарства из назначения',
             action: 'Открыть аптеку',
             onAction: () => _openMarket(),
@@ -170,10 +253,10 @@ class _PrescriptionDetailScreenState extends State<PrescriptionDetailScreen> {
             onAction: _openMarket,
           ),
           const SizedBox(height: 10),
-          if (_loadingProducts)
+          if (_loadingProducts && _groups.isEmpty)
             const Center(child: CircularProgressIndicator(color: _green))
           else if (_groups.isEmpty)
-            const _ProductsEmpty()
+             const _ProductsEmpty()
           else
             ..._groups.map(
               (group) => _ProductGroup(
@@ -255,6 +338,7 @@ class _HeaderCard extends StatelessWidget {
             ],
           ),
           if (prescription.patientProfile != null) ...[
+            const SizedBox(height: 12),
             Row(
               children: [
                 Icon(Icons.person_outline,
@@ -270,8 +354,8 @@ class _HeaderCard extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 12),
           ],
+          const SizedBox(height: 12),
           Text(
             prescription.diagnosis,
             style: const TextStyle(
@@ -400,6 +484,110 @@ class _MedicineCard extends StatelessWidget {
             'x${medicine.quantityNeeded}',
             style: const TextStyle(fontWeight: FontWeight.w900, color: _green),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PrescriptionScheduleBlock extends StatelessWidget {
+  const _PrescriptionScheduleBlock({
+    required this.items,
+    required this.onTaken,
+    required this.onMissed,
+  });
+
+  final List<MedicationScheduleItem> items;
+  final Function(String id) onTaken;
+  final Function(String id) onMissed;
+
+  @override
+  Widget build(BuildContext context) {
+    final morning = items.where((i) => i.takeTime.hour < 12).toList();
+    final day = items.where((i) => i.takeTime.hour >= 12 && i.takeTime.hour < 17).toList();
+    final evening = items.where((i) => i.takeTime.hour >= 17).toList();
+
+    return Column(
+      children: [
+        if (morning.isNotEmpty) _PeriodBlock(title: "Утро", items: morning, onTaken: onTaken, onMissed: onMissed),
+        if (day.isNotEmpty) _PeriodBlock(title: "День", items: day, onTaken: onTaken, onMissed: onMissed),
+        if (evening.isNotEmpty) _PeriodBlock(title: "Вечер", items: evening, onTaken: onTaken, onMissed: onMissed),
+      ],
+    );
+  }
+}
+
+class _PeriodBlock extends StatelessWidget {
+  const _PeriodBlock({
+    required this.title,
+    required this.items,
+    required this.onTaken,
+    required this.onMissed,
+  });
+
+  final String title;
+  final List<MedicationScheduleItem> items;
+  final Function(String id) onTaken;
+  final Function(String id) onMissed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Text(title, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13, color: _muted)),
+        ),
+        ...items.take(3).map((item) => _ScheduleRow(item: item, onTaken: onTaken, onMissed: onMissed)),
+      ],
+    );
+  }
+}
+
+class _ScheduleRow extends StatelessWidget {
+  const _ScheduleRow({required this.item, required this.onTaken, required this.onMissed});
+  final MedicationScheduleItem item;
+  final Function(String id) onTaken;
+  final Function(String id) onMissed;
+
+  @override
+  Widget build(BuildContext context) {
+    final taken = item.status == "TAKEN";
+    final missed = item.status == "MISSED";
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE2EAEC).withValues(alpha: 0.5)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(item.prescriptionMedicine.medicineName, style: const TextStyle(fontWeight: FontWeight.w700)),
+                Text("${item.takeTime.hour}:00 · ${item.prescriptionMedicine.dosage}", style: const TextStyle(fontSize: 12, color: _muted)),
+              ],
+            ),
+          ),
+          if (!taken && !missed) ...[
+            IconButton(onPressed: () => onMissed(item.id), icon: const Icon(Icons.close, color: Colors.redAccent, size: 20)),
+            IconButton(onPressed: () => onTaken(item.id), icon: const Icon(Icons.check, color: _green, size: 20)),
+          ] else
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: taken ? const Color(0xFFEAF7F2) : const Color(0xFFFFEBEE),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(taken ? "Принято" : "Пропущено", 
+                style: TextStyle(color: taken ? _green : Colors.red, fontSize: 11, fontWeight: FontWeight.w800)),
+            ),
         ],
       ),
     );
@@ -625,6 +813,118 @@ class _SmallEmpty extends StatelessWidget {
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AiChatSheet extends StatefulWidget {
+  const _AiChatSheet({required this.apiService, required this.prescription});
+  final ApiService apiService;
+  final Prescription prescription;
+
+  @override
+  State<_AiChatSheet> createState() => _AiChatSheetState();
+}
+
+class _AiChatSheetState extends State<_AiChatSheet> {
+  final _controller = TextEditingController();
+  final List<Map<String, String>> _messages = [
+    {'role': 'assistant', 'content': 'Здравствуйте! Я ваш ИИ-ассистент по назначению. Могу объяснить дозировки, график или помочь с поиском лекарств. О чем вы хотели бы узнать?'}
+  ];
+  bool _loading = false;
+
+  Future<void> _send() async {
+    final text = _controller.text.trim();
+    if (text.isEmpty) return;
+
+    setState(() {
+      _messages.add({'role': 'user', 'content': text});
+      _loading = true;
+    });
+    _controller.clear();
+
+    try {
+      final response = await widget.apiService.explainPrescription(widget.prescription.id);
+      if (!mounted) return;
+      setState(() {
+        _messages.add({'role': 'assistant', 'content': response});
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _messages.add({'role': 'assistant', 'content': 'Простите, возникла ошибка при обращении к ИИ.'});
+        _loading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.75,
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      padding: EdgeInsets.fromLTRB(16, 20, 16, MediaQuery.of(context).viewInsets.bottom + 20),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.auto_awesome, color: _green),
+              const SizedBox(width: 10),
+              const Expanded(child: Text('Чат с ИИ по назначению', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18))),
+              IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close)),
+            ],
+          ),
+          const Divider(),
+          Expanded(
+            child: ListView.builder(
+              itemCount: _messages.length,
+              itemBuilder: (context, i) {
+                final m = _messages[i];
+                final isUser = m['role'] == 'user';
+                return Align(
+                  alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
+                  child: Container(
+                    margin: const EdgeInsets.symmetric(vertical: 4),
+                    padding: const EdgeInsets.all(12),
+                    constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
+                    decoration: BoxDecoration(
+                      color: isUser ? _green : const Color(0xFFF1F5F9),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Text(m['content']!, style: TextStyle(color: isUser ? Colors.white : _dark)),
+                  ),
+                );
+              },
+            ),
+          ),
+          if (_loading) const LinearProgressIndicator(color: _green),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _controller,
+                  decoration: InputDecoration(
+                    hintText: 'Ваш вопрос...',
+                    filled: true,
+                    fillColor: const Color(0xFFF1F5F9),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                  ),
+                  onSubmitted: (_) => _send(),
+                ),
+              ),
+              const SizedBox(width: 8),
+              IconButton(onPressed: _send, icon: const Icon(Icons.send, color: _green)),
+            ],
+          ),
+          const SizedBox(height: 6),
+          const Text('ИИ может ошибаться. Не меняйте лечение без врача.', style: TextStyle(fontSize: 10, color: _muted)),
         ],
       ),
     );

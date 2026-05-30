@@ -9,299 +9,250 @@ export type ParsedMedicine = {
   instruction: string;
   quantityNeeded: number;
   activeSubstance: string;
+  notes?: string;
 };
 
 export type ParsedPrescription = {
+  diagnosis?: string;
   summary: string;
   disclaimer: string;
+  doctorComment?: string;
   medicines: ParsedMedicine[];
 };
 
+export type PrescriptionValidation = {
+  isComplete: boolean;
+  warnings: string[];
+  suggestions: string[];
+};
+
+export type DemandReport = {
+  frequentlyPrescribed: string[];
+  cartLeaders: string[];
+  outOfStockDemand: string[];
+  popularAlternatives: string[];
+  demandForecast: string;
+  businessSummary: string;
+};
+
 export async function parsePrescription(rawText: string): Promise<ParsedPrescription> {
+  const result = await runAiTask("parse", rawText);
+  return normalizeParsedPrescription(result);
+}
+
+export async function validatePrescription(rawText: string): Promise<PrescriptionValidation> {
+  const result = await runAiTask("validate", rawText);
+  return {
+    isComplete: !!result.isComplete,
+    warnings: Array.isArray(result.warnings) ? result.warnings : [],
+    suggestions: Array.isArray(result.suggestions) ? result.suggestions : []
+  };
+}
+
+export async function explainPrescription(prescription: any): Promise<string> {
+  const text = typeof prescription === "string" ? prescription : JSON.stringify(prescription);
+  const result = await runAiTask("explain", text);
+  return result.explanation || result.summary || "Назначение объяснено AI-агентом.";
+}
+
+export async function generateDemandReport(dataJson: string): Promise<DemandReport> {
+  const result = await runAiTask("demand-report", dataJson);
+  return {
+    frequentlyPrescribed: result.frequentlyPrescribed || [],
+    cartLeaders: result.cartLeaders || [],
+    outOfStockDemand: result.outOfStockDemand || [],
+    popularAlternatives: result.popularAlternatives || [],
+    demandForecast: result.demandForecast || "Нет данных для прогноза",
+    businessSummary: result.businessSummary || "Отчет сформирован"
+  };
+}
+
+async function runAiTask(task: string, input: string): Promise<any> {
   if (isOllamaProvider()) {
-    return parseWithOllama(rawText);
+    return runWithOllama(task, input);
   }
 
   if (!process.env.QWEN_API_KEY) {
-    return mockQwenParse(rawText);
+    return mockAiResponse(task, input);
   }
 
-  return parseWithQwen(rawText);
+  return runWithQwen(task, input);
+}
+
+function mockAiResponse(task: string, input: string): any {
+  if (task === "parse") {
+    return mockQwenParse(input);
+  }
+  if (task === "validate") {
+    return {
+      isComplete: false,
+      warnings: ["Не указана длительность приема для одного из препаратов"],
+      suggestions: ["Уточните у пациента, на какой срок врач назначил препарат"]
+    };
+  }
+  if (task === "explain") {
+    return {
+      explanation: "Вам назначено комбинированное лечение: антибиотик для борьбы с инфекцией и противовоспалительное средство. Важно пропить курс антибиотика до конца, даже если станет лучше."
+    };
+  }
+  if (task === "demand-report") {
+    return {
+      frequentlyPrescribed: ["Парацетамол", "Ибупрофен"],
+      cartLeaders: ["Витамин С", "Аква Марис"],
+      outOfStockDemand: ["Цетиризин"],
+      popularAlternatives: ["Лоратадин вместо Цетиризина"],
+      demandForecast: "Ожидается рост спроса на противовирусные средства в ближайшую неделю на 15%.",
+      businessSummary: "Рынок стабилен, фокус на сезонные препараты."
+    };
+  }
+  return {};
+}
+
+function buildMessages(task: string, input: string) {
+  let systemPrompt =
+    "Ты медицинский AI-агент для Halyk Health. Не ставь диагноз и не назначай лечение. Обязательно добавляй дисклеймер: '" + AI_DISCLAIMER + "'.";
+  let userPrompt = "";
+
+  switch (task) {
+    case "parse":
+      systemPrompt += " Структурируй назначение врача в JSON.";
+      userPrompt = `Верни JSON строго такого вида: {"diagnosis":"...","summary":"...","doctorComment":"...","medicines":[{"medicineName":"...","dosage":"...","frequency":"...","duration":"...","instruction":"...","quantityNeeded":1,"activeSubstance":"...","notes":"..."}]}. activeSubstance верни латиницей. Текст: ${input}`;
+      break;
+    case "validate":
+      systemPrompt += " Проверь полноту назначения (лекарство, дозировка, частота, длительность, инструкция).";
+      userPrompt = `Верни JSON строго такого вида: {"isComplete":true/false,"warnings":["..."],"suggestions":["..."]}. Текст: ${input}`;
+      break;
+    case "explain":
+      systemPrompt += " Объясни назначение пациенту простым человеческим языком.";
+      userPrompt = `Верни JSON строго такого вида: {"explanation":"..."}. Назначение: ${input}`;
+      break;
+    case "demand-report":
+      systemPrompt += " Сформируй аналитический отчет по спросу для бизнеса на основе данных.";
+      userPrompt = `Верни JSON строго такого вида: {"frequentlyPrescribed":["..."],"cartLeaders":["..."],"outOfStockDemand":["..."],"popularAlternatives":["..."],"demandForecast":"...","businessSummary":"..."}. Данные: ${input}`;
+      break;
+    default:
+      userPrompt = input;
+  }
+
+  return [
+    { role: "system", content: systemPrompt },
+    { role: "user", content: userPrompt }
+  ];
+}
+
+async function runWithOllama(task: string, input: string): Promise<any> {
+  const apiUrl = process.env.QWEN_API_URL || "http://127.0.0.1:11434/api/chat";
+  const model = process.env.QWEN_MODEL || "qwen3:latest";
+  
+  const response = await fetch(apiUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model,
+      messages: buildMessages(task, input),
+      stream: false,
+      format: "json",
+      options: { temperature: 0.1 }
+    })
+  });
+
+  if (!response.ok) throw new HttpError(502, "Ollama task failed");
+  const data = await response.json();
+  const content = data.message?.content || data.response;
+  return JSON.parse(extractJsonObject(content));
+}
+
+async function runWithQwen(task: string, input: string): Promise<any> {
+  const apiUrl = process.env.QWEN_API_URL || "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions";
+  const model = process.env.QWEN_MODEL || "qwen3.6-plus";
+
+  const response = await fetch(apiUrl, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.QWEN_API_KEY}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model,
+      messages: buildMessages(task, input),
+      temperature: 0.2,
+      response_format: { type: "json_object" }
+    })
+  });
+
+  if (!response.ok) throw new HttpError(502, "Qwen task failed");
+  const data = await response.json();
+  const content = data.choices?.[0]?.message?.content;
+  return JSON.parse(extractJsonObject(content));
 }
 
 function mockQwenParse(rawText: string): ParsedPrescription {
   const normalized = rawText.toLowerCase();
-  const hasAmoxicillin = normalized.includes("амоксициллин") || normalized.includes("amoxicillin");
-  const hasIbuprofen = normalized.includes("ибупрофен") || normalized.includes("ibuprofen");
-
-  if (hasAmoxicillin || hasIbuprofen) {
-    return {
-      summary:
-        "Назначение включает антибиотик курсом на 7 дней и жаропонижающее средство при необходимости.",
-      disclaimer: AI_DISCLAIMER,
-      medicines: [
-        {
-          medicineName: "Амоксициллин",
-          dosage: "500 мг",
-          frequency: "3 раза в день",
-          duration: "7 дней",
-          instruction: "После еды",
-          quantityNeeded: 21,
-          activeSubstance: "amoxicillin"
-        },
-        {
-          medicineName: "Ибупрофен",
-          dosage: "200 мг",
-          frequency: "При температуре",
-          duration: "По необходимости",
-          instruction: "Не превышать дозировку, указанную врачом",
-          quantityNeeded: 1,
-          activeSubstance: "ibuprofen"
-        }
-      ]
-    };
-  }
-
+  const hasAmoxicillin = normalized.includes("амоксициллин");
+  
   return {
-    summary:
-      "ИИ-агент структурировал назначение врача. Проверьте детали приема у врача, если часть текста назначения неясна.",
+    diagnosis: "ОРВИ" + (hasAmoxicillin ? " с подозрением на бактериальную инфекцию" : ""),
+    summary: "Назначено симптоматическое лечение" + (hasAmoxicillin ? " и антибиотик" : ""),
     disclaimer: AI_DISCLAIMER,
-    medicines: []
+    medicines: hasAmoxicillin ? [
+      {
+        medicineName: "Амоксициллин",
+        dosage: "500 мг",
+        frequency: "3 раза в день",
+        duration: "7 дней",
+        instruction: "После еды",
+        quantityNeeded: 21,
+        activeSubstance: "amoxicillin"
+      }
+    ] : []
   };
 }
 
 function isOllamaProvider() {
   const provider = process.env.QWEN_PROVIDER?.toLowerCase();
-  const apiUrl = process.env.QWEN_API_URL?.toLowerCase() || "";
-  
-  if (provider === "ollama" || apiUrl.includes("11434") || apiUrl.includes("/api/chat")) {
-    return true;
-  }
-  
-  if (!process.env.QWEN_API_KEY) {
-    return true;
-  }
-  
-  return false;
-}
-
-function buildMessages(rawText: string) {
-  return [
-    {
-      role: "system",
-      content:
-        "Ты медицинский AI-агент для Halyk Health. Не ставь диагноз и не назначай лечение. Только структурируй назначение врача, объясняй простым языком, выделяй лекарства, дозировки, частоту и длительность приема. Верни только валидный JSON без markdown."
-    },
-    {
-      role: "user",
-      content: `Верни JSON строго такого вида: {"summary":"...","disclaimer":"...","medicines":[{"medicineName":"...","dosage":"...","frequency":"...","duration":"...","instruction":"...","quantityNeeded":1,"activeSubstance":"..."}]}. activeSubstance верни латиницей в виде международного названия или slug, например amoxicillin, ibuprofen, paracetamol. quantityNeeded посчитай как количество приемов за курс, если это явно возможно. Текст назначения врача: ${rawText}`
-    }
-  ];
+  return provider === "ollama" || !process.env.QWEN_API_KEY;
 }
 
 function extractJsonObject(content: string) {
-  const withoutThinking = content
-    .replace(/<think>[\s\S]*?<\/think>/gi, "")
-    .replace(/```json/gi, "")
-    .replace(/```/g, "")
-    .trim();
-  const start = withoutThinking.indexOf("{");
-  const end = withoutThinking.lastIndexOf("}");
-
-  if (start === -1 || end === -1 || end <= start) {
-    throw new Error("No JSON object found in AI response");
-  }
-
-  return withoutThinking.slice(start, end + 1);
+  const cleaned = content.replace(/```json/gi, "").replace(/```/g, "").trim();
+  const start = cleaned.indexOf("{");
+  const end = cleaned.lastIndexOf("}");
+  if (start === -1 || end === -1) return "{}";
+  return cleaned.slice(start, end + 1);
 }
 
-function normalizeParsedPrescription(parsed: Partial<ParsedPrescription>): ParsedPrescription {
+function normalizeParsedPrescription(parsed: any): ParsedPrescription {
   return {
-    summary: parsed.summary || "Назначение структурировано AI-агентом.",
+    diagnosis: parsed.diagnosis,
+    summary: parsed.summary || "Назначение структурировано AI.",
     disclaimer: AI_DISCLAIMER,
-    medicines: Array.isArray(parsed.medicines)
-      ? parsed.medicines
-          .map((medicine) => normalizeParsedMedicine(medicine))
-          .filter((medicine) => medicine.medicineName && medicine.activeSubstance)
+    doctorComment: parsed.doctorComment,
+    medicines: Array.isArray(parsed.medicines) 
+      ? parsed.medicines.map(normalizeParsedMedicine)
       : []
   };
 }
 
-function normalizeParsedMedicine(medicine: ParsedMedicine): ParsedMedicine {
+function normalizeParsedMedicine(medicine: any): ParsedMedicine {
   const medicineName = String(medicine.medicineName || "").trim();
-  const dosage = String(medicine.dosage || "").trim();
   const frequency = String(medicine.frequency || "").trim();
   const duration = String(medicine.duration || "").trim();
-  const instruction = String(medicine.instruction || "").trim();
-  const activeSubstance = normalizeActiveSubstance(
-    String(medicine.activeSubstance || medicineName).trim().toLowerCase()
-  );
-  const quantityNeeded = normalizeQuantityNeeded(Number(medicine.quantityNeeded || 1), frequency, duration);
 
   return {
     medicineName,
-    dosage,
+    dosage: String(medicine.dosage || "").trim(),
     frequency,
     duration,
-    instruction,
-    quantityNeeded,
-    activeSubstance
+    instruction: String(medicine.instruction || "").trim(),
+    activeSubstance: (medicine.activeSubstance || medicineName).toLowerCase().trim().replace(/\s+/g, "-"),
+    quantityNeeded: normalizeQuantityNeeded(Number(medicine.quantityNeeded || 1), frequency, duration),
+    notes: medicine.notes
   };
-}
-
-function normalizeActiveSubstance(activeSubstance: string) {
-  const normalized = activeSubstance.toLowerCase().trim();
-  const knownMap: Record<string, string> = {
-    "амоксициллин": "amoxicillin",
-    "amoxicillin": "amoxicillin",
-    "ибупрофен": "ibuprofen",
-    "ibuprofen": "ibuprofen",
-    "парацетамол": "paracetamol",
-    "paracetamol": "paracetamol",
-    "лоратадин": "loratadine",
-    "loratadine": "loratadine",
-    "цетиризин": "cetirizine",
-    "cetirizine": "cetirizine",
-    "азитромицин": "azithromycin",
-    "azithromycin": "azithromycin",
-    "аскорбиновая кислота": "ascorbic-acid",
-    "витамин c": "ascorbic-acid",
-    "vitamin c": "ascorbic-acid",
-    "ascorbic acid": "ascorbic-acid",
-    "бензидамин": "benzydamine",
-    "benzydamine": "benzydamine",
-    "эналаприл": "enalapril",
-    "enalapril": "enalapril"
-  };
-
-  return knownMap[normalized] || normalized.replace(/\s+/g, "-");
 }
 
 function normalizeQuantityNeeded(quantityNeeded: number, frequency: string, duration: string) {
-  const normalizedScheduleText = `${frequency} ${duration}`.toLowerCase();
-
-  if (
-    normalizedScheduleText.includes("необходим") ||
-    normalizedScheduleText.includes("температур") ||
-    normalizedScheduleText.includes("по мере")
-  ) {
-    return 1;
-  }
-
-  if (quantityNeeded > 1) {
-    return Math.round(quantityNeeded);
-  }
-
-  const durationDays = duration.match(/\d+/)?.[0];
-  const frequencyCount = frequency.match(/\d+/)?.[0];
-
-  if (durationDays && frequencyCount) {
-    return Number(durationDays) * Number(frequencyCount);
-  }
-
-  return 1;
-}
-
-async function parseWithOllama(rawText: string): Promise<ParsedPrescription> {
-  const apiUrl = process.env.QWEN_API_URL || "http://127.0.0.1:11434/api/chat";
-  const model = process.env.QWEN_MODEL || "qwen3:latest";
-  const timeoutMs = Number(process.env.QWEN_TIMEOUT_MS || 60000);
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-
-  let response: Response;
-  try {
-    response = await fetch(apiUrl, {
-      method: "POST",
-      signal: controller.signal,
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        model,
-        messages: buildMessages(rawText),
-        stream: false,
-        format: "json",
-        think: false,
-        options: {
-          temperature: 0.1
-        }
-      })
-    });
-  } catch (error) {
-    throw new HttpError(502, "Local Ollama Qwen request failed or timed out", error);
-  } finally {
-    clearTimeout(timeout);
-  }
-
-  if (!response.ok) {
-    throw new HttpError(502, "Local Ollama Qwen request failed", await response.text());
-  }
-
-  const data = (await response.json()) as {
-    message?: { content?: string };
-    response?: string;
-  };
-
-  const content = data.message?.content || data.response;
-  if (!content) {
-    throw new HttpError(502, "Local Ollama Qwen returned empty content");
-  }
-
-  try {
-    return normalizeParsedPrescription(JSON.parse(extractJsonObject(content)) as Partial<ParsedPrescription>);
-  } catch (error) {
-    throw new HttpError(502, "Local Ollama Qwen returned invalid JSON", error);
-  }
-}
-
-async function parseWithQwen(rawText: string): Promise<ParsedPrescription> {
-  const apiUrl =
-    process.env.QWEN_API_URL || "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions";
-  const model = process.env.QWEN_MODEL || "qwen3.6-plus";
-  const timeoutMs = Number(process.env.QWEN_TIMEOUT_MS || 20000);
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-
-  let response: Response;
-  try {
-    response = await fetch(apiUrl, {
-      method: "POST",
-      signal: controller.signal,
-      headers: {
-        Authorization: `Bearer ${process.env.QWEN_API_KEY}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        model,
-        messages: buildMessages(rawText),
-        temperature: 0.2,
-        response_format: { type: "json_object" }
-      })
-    });
-  } catch (error) {
-    throw new HttpError(502, "Qwen API request failed or timed out", error);
-  } finally {
-    clearTimeout(timeout);
-  }
-
-  if (!response.ok) {
-    throw new HttpError(502, "Qwen API request failed", await response.text());
-  }
-
-  const data = (await response.json()) as {
-    choices?: Array<{ message?: { content?: string } }>;
-    output_text?: string;
-  };
-
-  const content = data.choices?.[0]?.message?.content || data.output_text;
-  if (!content) {
-    throw new HttpError(502, "Qwen API returned empty content");
-  }
-
-  try {
-    return normalizeParsedPrescription(JSON.parse(extractJsonObject(content)) as Partial<ParsedPrescription>);
-  } catch (error) {
-    throw new HttpError(502, "Qwen API returned invalid JSON", error);
-  }
+  if (quantityNeeded > 1) return Math.round(quantityNeeded);
+  const d = parseInt(duration.match(/\d+/)?.[0] || "1");
+  const f = parseInt(frequency.match(/\d+/)?.[0] || "1");
+  return d * f;
 }

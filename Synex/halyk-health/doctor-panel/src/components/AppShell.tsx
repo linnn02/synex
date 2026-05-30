@@ -1,5 +1,6 @@
 import {
   Activity,
+  BarChart3,
   Bell,
   CalendarClock,
   FileText,
@@ -12,7 +13,7 @@ import {
 import type { ReactNode } from "react";
 import type { User } from "../api/api";
 
-type View = "dashboard" | "appointments" | "prescriptions";
+type View = "dashboard" | "appointments" | "prescriptions" | "demand";
 
 type AppShellProps = {
   user: User;
@@ -42,6 +43,11 @@ const viewTitles: Record<View, { eyebrow: string; title: string; description: st
     eyebrow: "Медицинские документы",
     title: "Цифровые назначения",
     description: "История назначений, AI-анализ и список препаратов"
+  },
+  demand: {
+    eyebrow: "Рыночная аналитика",
+    title: "Отчет спроса B2B",
+    description: "AI-анализ популярных препаратов, дефицита и рыночных трендов"
   }
 };
 
@@ -94,6 +100,10 @@ export function AppShell({
             <FileText size={18} />
             <span>Назначения</span>
             {prescriptionsCount > 0 && <small>{prescriptionsCount}</small>}
+          </button>
+          <button className={view === "demand" ? "active" : ""} onClick={() => onViewChange("demand")}>
+            <BarChart3 size={18} />
+            <span>Аналитика B2B</span>
           </button>
         </nav>
 
