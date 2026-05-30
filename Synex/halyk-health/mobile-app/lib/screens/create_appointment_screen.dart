@@ -484,7 +484,7 @@ class _CreateAppointmentScreenState extends State<CreateAppointmentScreen> {
           appointment: appointment,
           clinic: clinic,
           doctor: doctor,
-          onClose: () => Navigator.pop(context),
+          onClose: () => Navigator.pop(context, true),
         ),
       ),
     );

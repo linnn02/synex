@@ -9,6 +9,7 @@ import 'medication_schedule_screen.dart';
 import 'my_appointments_screen.dart';
 import 'my_prescriptions_screen.dart';
 import 'prescription_detail_screen.dart';
+import 'family_screen.dart';
 
 const _halykGreen = Color(0xFF007F5F);
 const _halykDark = Color(0xFF073E35);
@@ -35,7 +36,7 @@ class _HomeScreenState extends State<HomeScreen> {
   int _index = 0;
 
   Future<void> _openAppointmentFlow() async {
-    await Navigator.push(
+    final created = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
         builder: (_) => CreateAppointmentScreen(
@@ -44,9 +45,18 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
     );
-    if (mounted) {
+    if (mounted && created == true) {
       setState(() => _index = 1);
     }
+  }
+
+  void _openFamily() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => FamilyScreen(apiService: widget.apiService),
+      ),
+    );
   }
 
   @override
@@ -56,6 +66,7 @@ class _HomeScreenState extends State<HomeScreen> {
         apiService: widget.apiService,
         user: widget.user,
         onBook: _openAppointmentFlow,
+        onOpenFamily: _openFamily,
         onOpenAppointments: () => setState(() => _index = 1),
         onOpenPrescriptions: () => setState(() => _index = 2),
         onOpenMarket: () => setState(() => _index = 3),
@@ -114,6 +125,7 @@ class _HomeOverview extends StatefulWidget {
     required this.apiService,
     required this.user,
     required this.onBook,
+    required this.onOpenFamily,
     required this.onOpenAppointments,
     required this.onOpenPrescriptions,
     required this.onOpenMarket,
@@ -123,6 +135,7 @@ class _HomeOverview extends StatefulWidget {
   final ApiService apiService;
   final AppUser user;
   final VoidCallback onBook;
+  final VoidCallback onOpenFamily;
   final VoidCallback onOpenAppointments;
   final VoidCallback onOpenPrescriptions;
   final VoidCallback onOpenMarket;
@@ -189,6 +202,7 @@ class _HomeOverviewState extends State<_HomeOverview> {
                   children: [
                     _QuickActions(
                       onBook: widget.onBook,
+                      onOpenFamily: widget.onOpenFamily,
                       onOpenAppointments: widget.onOpenAppointments,
                       onOpenPrescriptions: widget.onOpenPrescriptions,
                       onOpenMarket: widget.onOpenMarket,
@@ -403,12 +417,14 @@ class _HeroHeader extends StatelessWidget {
 class _QuickActions extends StatelessWidget {
   const _QuickActions({
     required this.onBook,
+    required this.onOpenFamily,
     required this.onOpenAppointments,
     required this.onOpenPrescriptions,
     required this.onOpenMarket,
   });
 
   final VoidCallback onBook;
+  final VoidCallback onOpenFamily;
   final VoidCallback onOpenAppointments;
   final VoidCallback onOpenPrescriptions;
   final VoidCallback onOpenMarket;
@@ -424,10 +440,10 @@ class _QuickActions extends StatelessWidget {
       childAspectRatio: 1.55,
       children: [
         _ActionTile(
-          icon: Icons.add_circle_outline,
-          title: 'Новая запись',
-          text: 'Врач, дата и время',
-          onTap: onBook,
+          icon: Icons.people_outline,
+          title: 'Моя семья',
+          text: 'Добавить и управлять',
+          onTap: onOpenFamily,
         ),
         _ActionTile(
           icon: Icons.event_available_outlined,

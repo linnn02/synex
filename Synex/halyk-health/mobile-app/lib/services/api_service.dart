@@ -149,6 +149,25 @@ class ApiService {
         .toList();
   }
 
+  Future<PatientProfile> createPatientProfile({
+    required String fullName,
+    required String relationType,
+    required String insuranceStatus,
+    String? iin,
+  }) async {
+    final response = await _request(
+      '/patient-profiles',
+      method: 'POST',
+      body: {
+        'fullName': fullName,
+        'relationType': relationType,
+        'insuranceStatus': insuranceStatus,
+        if (iin != null) 'iin': iin,
+      },
+    ) as Map<String, dynamic>;
+    return PatientProfile.fromJson(response);
+  }
+
   Future<List<MarketProduct>> searchMarketProducts(String query) async {
     final response = await _request(
       '/market/search?query=${Uri.encodeQueryComponent(query)}',
