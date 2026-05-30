@@ -7,7 +7,11 @@ import { prisma } from "../../common/prisma";
 const router = Router();
 
 const appointmentInclude = {
-  patient: { select: { id: true, fullName: true, email: true, phone: true } },
+  patientProfile: {
+    include: {
+      user: { select: { id: true, fullName: true, email: true, phone: true, role: true } }
+    }
+  },
   doctor: { select: { id: true, fullName: true, email: true, phone: true } },
   clinic: true,
   prescription: true
@@ -17,11 +21,19 @@ const prescriptionInclude = {
   appointment: {
     include: {
       clinic: true,
-      patient: { select: { id: true, fullName: true, email: true, phone: true } },
+      patientProfile: {
+        include: {
+          user: { select: { id: true, fullName: true, email: true, phone: true, role: true } }
+        }
+      },
       doctor: { select: { id: true, fullName: true, email: true, phone: true } }
     }
   },
-  patient: { select: { id: true, fullName: true, email: true, phone: true } },
+  patientProfile: {
+    include: {
+      user: { select: { id: true, fullName: true, email: true, phone: true, role: true } }
+    }
+  },
   doctor: { select: { id: true, fullName: true, email: true, phone: true } },
   medicines: {
     include: {
@@ -30,6 +42,42 @@ const prescriptionInclude = {
     }
   }
 } satisfies Prisma.PrescriptionInclude;
+
+type AppointmentWithProfile = Prisma.AppointmentGetPayload<{ include: typeof appointmentInclude }>;
+type PrescriptionWithProfile = Prisma.PrescriptionGetPayload<{ include: typeof prescriptionInclude }>;
+
+function profileAsPatient(profile: AppointmentWithProfile["patientProfile"] | PrescriptionWithProfile["patientProfile"]) {
+  return {
+    id: profile.id,
+    fullName: profile.fullName,
+    email: profile.user.email,
+    phone: profile.user.phone,
+    role: profile.user.role,
+    iin: profile.iin,
+    relationType: profile.relationType,
+    insuranceStatus: profile.insuranceStatus
+  };
+}
+
+function serializeAppointment(appointment: AppointmentWithProfile) {
+  return {
+    ...appointment,
+    patient: profileAsPatient(appointment.patientProfile)
+  };
+}
+
+function serializePrescription(prescription: PrescriptionWithProfile) {
+  return {
+    ...prescription,
+    patient: profileAsPatient(prescription.patientProfile),
+    appointment: prescription.appointment
+      ? {
+          ...prescription.appointment,
+          patient: profileAsPatient(prescription.appointment.patientProfile)
+        }
+      : prescription.appointment
+  };
+}
 
 router.get(
   "/appointments",
@@ -44,7 +92,7 @@ router.get(
       orderBy: [{ status: "asc" }, { appointmentDate: "asc" }]
     });
 
-    res.json(appointments);
+    res.json(appointments.map(serializeAppointment));
   })
 );
 
@@ -61,7 +109,7 @@ router.get(
       orderBy: { createdAt: "desc" }
     });
 
-    res.json(prescriptions);
+    res.json(prescriptions.map(serializePrescription));
   })
 );
 

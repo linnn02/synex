@@ -1,0 +1,9 @@
+{
+  "name": "Halyk Health",
+  "short_name": "Halyk Health",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#F4F7F8",
+  "theme_color": "#007F5F",
+  "description": "Patient app for Halyk Health"
+}

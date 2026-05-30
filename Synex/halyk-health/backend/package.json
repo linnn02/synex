@@ -10,7 +10,12 @@
     "prisma:generate": "prisma generate",
     "prisma:push": "prisma db push",
     "prisma:migrate": "prisma migrate dev",
-    "prisma:seed": "prisma db seed"
+    "prisma:deploy": "prisma migrate deploy",
+    "prisma:reset": "prisma migrate reset",
+    "prisma:seed": "prisma db seed",
+    "supabase:push": "prisma db push",
+    "supabase:deploy": "prisma migrate deploy",
+    "supabase:seed": "prisma db seed"
   },
   "dependencies": {
     "@prisma/client": "^6.8.2",

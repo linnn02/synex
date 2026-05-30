@@ -205,7 +205,7 @@ class _AddMemberSheetState extends State<_AddMemberSheet> {
   final _nameController = TextEditingController();
   final _iinController = TextEditingController();
   String _relation = 'CHILD';
-  String _insurance = 'ACTIVE';
+  final String _insurance = 'ACTIVE';
   bool _submitting = false;
 
   @override
@@ -234,7 +234,7 @@ class _AddMemberSheetState extends State<_AddMemberSheet> {
           const Text('Кем вам приходится?', style: TextStyle(fontWeight: FontWeight.w700)),
           const SizedBox(height: 8),
           DropdownButtonFormField<String>(
-            value: _relation,
+            initialValue: _relation,
             decoration: InputDecoration(
               filled: true,
               fillColor: const Color(0xFFF8FAFC),
@@ -285,8 +285,10 @@ class _AddMemberSheetState extends State<_AddMemberSheet> {
                 setState(() => _submitting = true);
                 try {
                   await widget.onAdd(_nameController.text, _relation, _insurance, _iinController.text);
-                  if (mounted) Navigator.pop(context);
+                  if (!context.mounted) return;
+                  Navigator.pop(context);
                 } catch (e) {
+                  if (!context.mounted) return;
                   setState(() => _submitting = false);
                   ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
                 }
