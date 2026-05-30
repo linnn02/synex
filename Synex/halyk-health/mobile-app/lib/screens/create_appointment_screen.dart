@@ -37,8 +37,11 @@ class _CreateAppointmentScreenState extends State<CreateAppointmentScreen> {
   String? _error;
 
   AppUser? _user;
+  List<PatientProfile> _profiles = [];
   List<Clinic> _clinics = [];
   List<DoctorProfile> _doctors = [];
+  
+  PatientProfile? _selectedProfile;
   Clinic? _selectedClinic;
   DoctorProfile? _selectedDoctor;
   List<AppointmentSlot> _slots = [];
@@ -65,19 +68,30 @@ class _CreateAppointmentScreenState extends State<CreateAppointmentScreen> {
 
     try {
       final user = widget.currentUser ?? await widget.apiService.me();
+      final profiles = await widget.apiService.getPatientProfiles();
       final clinics = await widget.apiService.getClinics();
-      final preferredClinic = _pickPreferredClinic(clinics);
+      
+      final initialProfile = profiles.firstWhere(
+        (p) => p.relationType == 'SELF',
+        orElse: () => profiles.isNotEmpty ? profiles.first : throw Exception('No patient profiles found'),
+      );
+
+      final preferredClinic = initialProfile.clinic ?? _pickPreferredClinic(clinics);
       final doctors = preferredClinic == null
           ? <DoctorProfile>[]
           : await widget.apiService.getClinicDoctors(preferredClinic.id);
 
+      final preferredDoctor = initialProfile.primaryDoctor ?? _pickPreferredDoctor(doctors);
+
       if (!mounted) return;
       setState(() {
         _user = user;
+        _profiles = profiles;
         _clinics = clinics;
+        _selectedProfile = initialProfile;
         _selectedClinic = preferredClinic;
         _doctors = doctors;
-        _selectedDoctor = _pickPreferredDoctor(doctors);
+        _selectedDoctor = preferredDoctor;
         _slots = _buildSlots();
         _loading = false;
       });
@@ -142,7 +156,17 @@ class _CreateAppointmentScreenState extends State<CreateAppointmentScreen> {
     return slots;
   }
 
-  Future<void> _changeClinic(Clinic clinic) async {
+  Future<void> _changeProfile(PatientProfile profile) async {
+    setState(() {
+      _selectedProfile = profile;
+    });
+
+    if (profile.clinic != null) {
+      await _changeClinic(profile.clinic!, preselectedDoctor: profile.primaryDoctor);
+    }
+  }
+
+  Future<void> _changeClinic(Clinic clinic, {DoctorProfile? preselectedDoctor}) async {
     setState(() {
       _selectedClinic = clinic;
       _selectedDoctor = null;
@@ -157,7 +181,7 @@ class _CreateAppointmentScreenState extends State<CreateAppointmentScreen> {
       if (!mounted) return;
       setState(() {
         _doctors = doctors;
-        _selectedDoctor = _pickPreferredDoctor(doctors);
+        _selectedDoctor = preselectedDoctor ?? _pickPreferredDoctor(doctors);
         _slots = _buildSlots();
       });
     } catch (error) {
@@ -185,7 +209,8 @@ class _CreateAppointmentScreenState extends State<CreateAppointmentScreen> {
   }
 
   Future<void> _submit() async {
-    if (_selectedClinic == null ||
+    if (_selectedProfile == null ||
+        _selectedClinic == null ||
         _selectedDoctor == null ||
         _selectedDate == null ||
         _selectedTime == null ||
@@ -206,6 +231,7 @@ class _CreateAppointmentScreenState extends State<CreateAppointmentScreen> {
     setState(() => _submitting = true);
     try {
       final appointment = await widget.apiService.createAppointment(
+        patientProfileId: _selectedProfile!.id,
         doctorId: _selectedDoctor!.user.id,
         clinicId: _selectedClinic!.id,
         appointmentDate: appointmentDate,
@@ -254,18 +280,20 @@ class _CreateAppointmentScreenState extends State<CreateAppointmentScreen> {
   }
 
   Widget _buildForm(bool enabled) {
-    final user = _user!;
+    final profile = _selectedProfile!;
     final clinic = _selectedClinic!;
     final doctor = _selectedDoctor!;
+    
     final medCarePatient = MedCarePatient(
-      id: user.id,
-      fullName: user.fullName,
-      iin: user.iin ?? 'Не указан',
-      phone: user.phone,
-      insuranceStatus: 'active',
+      id: profile.id,
+      fullName: profile.fullName,
+      iin: profile.iin ?? 'Не указан',
+      phone: _user?.phone ?? '',
+      insuranceStatus: profile.insuranceStatus.toLowerCase(),
       clinicId: clinic.id,
       doctorId: doctor.user.id,
     );
+    
     final medCareClinic = _clinicAdapter(clinic);
     final medCareDoctor = _doctorAdapter(doctor);
 
@@ -302,8 +330,34 @@ class _CreateAppointmentScreenState extends State<CreateAppointmentScreen> {
           ),
         ),
         const SizedBox(height: 16),
+        
+        _SelectionCard(
+          title: 'Кому нужна запись?',
+          icon: Icons.people_outline,
+          child: DropdownButtonFormField<PatientProfile>(
+            value: _selectedProfile,
+            decoration: const InputDecoration(labelText: 'Выберите члена семьи'),
+            items: _profiles
+                .map(
+                  (p) => DropdownMenuItem(
+                    value: p,
+                    child: Text(
+                      '${p.fullName} (${p.relationLabel})',
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                )
+                .toList(),
+            onChanged: (p) {
+              if (p != null) _changeProfile(p);
+            },
+          ),
+        ),
+        const SizedBox(height: 16),
+        
         PatientInfoCard(patient: medCarePatient),
         const SizedBox(height: 16),
+        
         _SelectionCard(
           title: 'Поликлиника',
           icon: Icons.local_hospital_outlined,

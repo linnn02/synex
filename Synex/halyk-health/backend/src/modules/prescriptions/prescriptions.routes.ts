@@ -35,11 +35,19 @@ const prescriptionInclude = {
   appointment: {
     include: {
       clinic: true,
-      patient: { select: { id: true, fullName: true, email: true, phone: true } },
+      patientProfile: {
+        include: {
+          user: { select: { id: true, fullName: true, email: true, phone: true } }
+        }
+      },
       doctor: { select: { id: true, fullName: true, email: true, phone: true } }
     }
   },
-  patient: { select: { id: true, fullName: true, email: true, phone: true } },
+  patientProfile: {
+    include: {
+      user: { select: { id: true, fullName: true, email: true, phone: true } }
+    }
+  },
   doctor: { select: { id: true, fullName: true, email: true, phone: true } },
   medicines: {
     include: {
@@ -66,7 +74,7 @@ async function assertPrescriptionAccess(prescriptionId: string, auth: ReturnType
 
   const canRead =
     auth.role === UserRole.ADMIN ||
-    prescription.patientId === auth.userId ||
+    prescription.patientProfile.userId === auth.userId ||
     prescription.doctorId === auth.userId;
 
   if (!canRead) {
@@ -99,7 +107,7 @@ router.post(
     const prescription = await prisma.prescription.create({
       data: {
         appointmentId: appointment.id,
-        patientId: appointment.patientId,
+        patientProfileId: appointment.patientProfileId,
         doctorId: appointment.doctorId,
         diagnosis: body.diagnosis,
         rawText: body.rawText,
@@ -124,7 +132,7 @@ router.post(
 
     for (const medicine of prescription.medicines) {
       await createMedicineMatches(medicine);
-      await createScheduleForMedicine(prescription.patientId, medicine);
+      await createScheduleForMedicine(prescription.patientProfileId, medicine);
     }
 
     const createdPrescription = await prisma.prescription.findUnique({
@@ -142,9 +150,15 @@ router.get(
   requireRole(UserRole.PATIENT),
   asyncHandler(async (req, res) => {
     const auth = getAuth(req);
+    const { patientProfileId } = req.query;
 
     const prescriptions = await prisma.prescription.findMany({
-      where: { patientId: auth.userId },
+      where: {
+        patientProfile: {
+          userId: auth.userId,
+          ...(patientProfileId ? { id: patientProfileId as string } : {})
+        }
+      },
       include: prescriptionInclude,
       orderBy: { createdAt: "desc" }
     });
@@ -220,7 +234,7 @@ router.post(
 
     for (const medicine of medicines) {
       await createMedicineMatches(medicine);
-      await createScheduleForMedicine(prescription.patientId, medicine);
+      await createScheduleForMedicine(prescription.patientProfileId, medicine);
     }
 
     const analyzedPrescription = await prisma.prescription.findUnique({
@@ -280,7 +294,7 @@ router.get(
     const medicineIds = prescription.medicines.map((medicine) => medicine.id);
     let schedule = await prisma.medicationSchedule.findMany({
       where: {
-        patientId: prescription.patientId,
+        patientProfileId: prescription.patientProfileId,
         prescriptionMedicineId: { in: medicineIds }
       },
       include: { prescriptionMedicine: true },
@@ -289,12 +303,12 @@ router.get(
 
     if (!schedule.length) {
       for (const medicine of prescription.medicines) {
-        await createScheduleForMedicine(prescription.patientId, medicine);
+        await createScheduleForMedicine(prescription.patientProfileId, medicine);
       }
 
       schedule = await prisma.medicationSchedule.findMany({
         where: {
-          patientId: prescription.patientId,
+          patientProfileId: prescription.patientProfileId,
           prescriptionMedicineId: { in: medicineIds }
         },
         include: { prescriptionMedicine: true },

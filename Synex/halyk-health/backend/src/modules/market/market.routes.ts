@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { UserRole } from "@prisma/client";
+import { UserRole, RelationType } from "@prisma/client";
 import { z } from "zod";
 import { authenticate, getAuth, requireRole } from "../../common/auth";
 import { asyncHandler } from "../../common/async-handler";
@@ -12,7 +12,8 @@ const router = Router();
 
 const addCartItemSchema = z.object({
   productId: z.string().uuid(),
-  quantity: z.number().int().positive().default(1)
+  quantity: z.number().int().positive().default(1),
+  patientProfileId: z.string().uuid().optional()
 });
 
 const updateCartItemSchema = z.object({
@@ -73,10 +74,22 @@ router.post(
       throw new HttpError(404, "Market product not found");
     }
 
+    let patientProfileId = req.body.patientProfileId;
+
+    if (!patientProfileId) {
+      const selfProfile = await prisma.patientProfile.findFirst({
+        where: { userId: auth.userId, relationType: RelationType.SELF }
+      });
+      if (!selfProfile) {
+        throw new HttpError(404, "Self patient profile not found");
+      }
+      patientProfileId = selfProfile.id;
+    }
+
     const cartItem = await prisma.cartItem.upsert({
       where: {
-        patientId_productId: {
-          patientId: auth.userId,
+        patientProfileId_productId: {
+          patientProfileId,
           productId: req.body.productId
         }
       },
@@ -84,7 +97,7 @@ router.post(
         quantity: { increment: req.body.quantity }
       },
       create: {
-        patientId: auth.userId,
+        patientProfileId,
         productId: req.body.productId,
         quantity: req.body.quantity
       },
@@ -102,7 +115,9 @@ router.get(
   asyncHandler(async (req, res) => {
     const auth = getAuth(req);
     const cart = await prisma.cartItem.findMany({
-      where: { patientId: auth.userId },
+      where: {
+        patientProfile: { userId: auth.userId }
+      },
       include: { product: true },
       orderBy: { createdAt: "desc" }
     });
@@ -120,10 +135,10 @@ router.patch(
     const auth = getAuth(req);
     const cartItem = await prisma.cartItem.findUnique({
       where: { id: req.params.id },
-      include: { product: true }
+      include: { patientProfile: true }
     });
 
-    if (!cartItem || cartItem.patientId !== auth.userId) {
+    if (!cartItem || cartItem.patientProfile.userId !== auth.userId) {
       throw new HttpError(404, "Cart item not found");
     }
 
@@ -150,10 +165,11 @@ router.delete(
   asyncHandler(async (req, res) => {
     const auth = getAuth(req);
     const cartItem = await prisma.cartItem.findUnique({
-      where: { id: req.params.id }
+      where: { id: req.params.id },
+      include: { patientProfile: true }
     });
 
-    if (!cartItem || cartItem.patientId !== auth.userId) {
+    if (!cartItem || cartItem.patientProfile.userId !== auth.userId) {
       throw new HttpError(404, "Cart item not found");
     }
 

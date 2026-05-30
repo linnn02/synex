@@ -74,7 +74,10 @@ class _PrescriptionDetailScreenState extends State<PrescriptionDetailScreen> {
   }
 
   Future<void> _addToCart(MarketProduct product) async {
-    await widget.apiService.addToCart(product.id);
+    await widget.apiService.addToCart(
+      product.id,
+      patientProfileId: _prescription.patientProfile?.id,
+    );
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('${product.title} добавлен в корзину')),
@@ -251,7 +254,24 @@ class _HeaderCard extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          if (prescription.patientProfile != null) ...[
+            Row(
+              children: [
+                Icon(Icons.person_outline,
+                    size: 14, color: Colors.white.withValues(alpha: 0.8)),
+                const SizedBox(width: 6),
+                Text(
+                  '${prescription.patientProfile!.fullName} (${prescription.patientProfile!.relationLabel})',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white.withValues(alpha: 0.9),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+          ],
           Text(
             prescription.diagnosis,
             style: const TextStyle(

@@ -28,6 +28,18 @@ class ApiService {
     return AppUser.fromJson(response as Map<String, dynamic>);
   }
 
+  Future<List<PatientProfile>> getPatientProfiles() async {
+    final response = await _request('/patient-profiles/my') as List<dynamic>;
+    return response
+        .map((item) => PatientProfile.fromJson(item as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<Map<String, dynamic>> getPatientAppointmentContext(String profileId) async {
+    final response = await _request('/patient-profiles/$profileId/appointment-context');
+    return response as Map<String, dynamic>;
+  }
+
   Future<List<Clinic>> getClinics() async {
     final response =
         await _request('/clinics', authenticated: false) as List<dynamic>;
@@ -46,6 +58,7 @@ class ApiService {
   }
 
   Future<Appointment> createAppointment({
+    required String patientProfileId,
     required String doctorId,
     required String clinicId,
     required DateTime appointmentDate,
@@ -55,6 +68,7 @@ class ApiService {
       '/appointments',
       method: 'POST',
       body: {
+        'patientProfileId': patientProfileId,
         'doctorId': doctorId,
         'clinicId': clinicId,
         'appointmentDate': appointmentDate.toUtc().toIso8601String(),
@@ -64,8 +78,12 @@ class ApiService {
     return Appointment.fromJson(response as Map<String, dynamic>);
   }
 
-  Future<List<Appointment>> getMyAppointments() async {
-    final response = await _request('/appointments/my') as List<dynamic>;
+  Future<List<Appointment>> getMyAppointments({String? patientProfileId}) async {
+    String path = '/appointments/my';
+    if (patientProfileId != null) {
+      path += '?patientProfileId=$patientProfileId';
+    }
+    final response = await _request(path) as List<dynamic>;
     return response
         .map((item) => Appointment.fromJson(item as Map<String, dynamic>))
         .toList();
@@ -86,8 +104,12 @@ class ApiService {
     return Appointment.fromJson(response as Map<String, dynamic>);
   }
 
-  Future<List<Prescription>> getMyPrescriptions() async {
-    final response = await _request('/prescriptions/my') as List<dynamic>;
+  Future<List<Prescription>> getMyPrescriptions({String? patientProfileId}) async {
+    String path = '/prescriptions/my';
+    if (patientProfileId != null) {
+      path += '?patientProfileId=$patientProfileId';
+    }
+    final response = await _request(path) as List<dynamic>;
     return response
         .map((item) => Prescription.fromJson(item as Map<String, dynamic>))
         .toList();
@@ -147,11 +169,15 @@ class ApiService {
         .toList();
   }
 
-  Future<void> addToCart(String productId) async {
+  Future<void> addToCart(String productId, {String? patientProfileId}) async {
     await _request(
       '/market/cart',
       method: 'POST',
-      body: {'productId': productId, 'quantity': 1},
+      body: {
+        'productId': productId,
+        'quantity': 1,
+        if (patientProfileId != null) 'patientProfileId': patientProfileId,
+      },
     );
   }
 
@@ -174,8 +200,12 @@ class ApiService {
     await _request('/market/cart/$cartItemId', method: 'DELETE');
   }
 
-  Future<List<MedicationScheduleItem>> getMySchedule() async {
-    final response = await _request('/schedule/my') as List<dynamic>;
+  Future<List<MedicationScheduleItem>> getMySchedule({String? patientProfileId}) async {
+    String path = '/schedule/my';
+    if (patientProfileId != null) {
+      path += '?patientProfileId=$patientProfileId';
+    }
+    final response = await _request(path) as List<dynamic>;
     return response
         .map(
           (item) =>

@@ -24,10 +24,10 @@ export function resolveCourseDays(duration: string) {
   return match ? Number(match[0]) : 1;
 }
 
-export async function createScheduleForMedicine(patientId: string, medicine: PrescriptionMedicine) {
+export async function createScheduleForMedicine(patientProfileId: string, medicine: PrescriptionMedicine) {
   await prisma.medicationSchedule.deleteMany({
     where: {
-      patientId,
+      patientProfileId,
       prescriptionMedicineId: medicine.id
     }
   });
@@ -43,7 +43,7 @@ export async function createScheduleForMedicine(patientId: string, medicine: Pre
       takeTime.setHours(hour, 0, 0, 0);
 
       scheduleData.push({
-        patientId,
+        patientProfileId,
         prescriptionMedicineId: medicine.id,
         takeTime
       });
@@ -55,9 +55,8 @@ export async function createScheduleForMedicine(patientId: string, medicine: Pre
   }
 
   return prisma.medicationSchedule.findMany({
-    where: { patientId, prescriptionMedicineId: medicine.id },
+    where: { patientProfileId, prescriptionMedicineId: medicine.id },
     include: { prescriptionMedicine: true },
     orderBy: { takeTime: "asc" }
   });
 }
-

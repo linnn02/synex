@@ -21,11 +21,11 @@ class AppUser {
 
   factory AppUser.fromJson(Map<String, dynamic> json) {
     return AppUser(
-      id: json['id'] as String,
-      fullName: json['fullName'] as String,
-      email: json['email'] as String,
-      phone: json['phone'] as String,
-      role: json['role'] as String,
+      id: json['id'] as String? ?? '',
+      fullName: json['fullName'] as String? ?? 'Неизвестно',
+      email: json['email'] as String? ?? '',
+      phone: json['phone'] as String? ?? '',
+      role: json['role'] as String? ?? 'PATIENT',
       iin: json['iin'] as String?,
       birthDate: json['birthDate'] == null
           ? null
@@ -33,6 +33,80 @@ class AppUser {
       address: json['address'] as String?,
     );
   }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is AppUser && runtimeType == other.runtimeType && id == other.id;
+
+  @override
+  int get hashCode => id.hashCode;
+}
+
+class PatientProfile {
+  const PatientProfile({
+    required this.id,
+    required this.userId,
+    required this.fullName,
+    this.iin,
+    required this.relationType,
+    required this.insuranceStatus,
+    this.clinicId,
+    this.primaryDoctorId,
+    this.clinic,
+    this.primaryDoctor,
+  });
+
+  final String id;
+  final String userId;
+  final String fullName;
+  final String? iin;
+  final String relationType;
+  final String insuranceStatus;
+  final String? clinicId;
+  final String? primaryDoctorId;
+  final Clinic? clinic;
+  final DoctorProfile? primaryDoctor;
+
+  factory PatientProfile.fromJson(Map<String, dynamic> json) {
+    return PatientProfile(
+      id: json['id'] as String? ?? '',
+      userId: json['userId'] as String? ?? '',
+      fullName: json['fullName'] as String? ?? 'Не указано',
+      iin: json['iin'] as String?,
+      relationType: json['relationType'] as String? ?? 'OTHER',
+      insuranceStatus: json['insuranceStatus'] as String? ?? 'UNINSURED',
+      clinicId: json['clinicId'] as String?,
+      primaryDoctorId: json['primaryDoctorId'] as String?,
+      clinic: json['clinic'] != null
+          ? Clinic.fromJson(json['clinic'] as Map<String, dynamic>)
+          : null,
+      primaryDoctor: json['primaryDoctor'] != null
+          ? DoctorProfile.fromJson(json['primaryDoctor'] as Map<String, dynamic>)
+          : null,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is PatientProfile &&
+          runtimeType == other.runtimeType &&
+          id == other.id;
+
+  @override
+  int get hashCode => id.hashCode;
+
+  String get relationLabel => switch (relationType) {
+        'SELF' => 'Я',
+        'CHILD' => 'Ребёнок',
+        'MOTHER' => 'Мама',
+        'FATHER' => 'Папа',
+        'GRANDMOTHER' => 'Бабушка',
+        'GRANDFATHER' => 'Дедушка',
+        'OTHER' => 'Другое',
+        _ => relationType,
+      };
 }
 
 class Clinic {
@@ -52,13 +126,21 @@ class Clinic {
 
   factory Clinic.fromJson(Map<String, dynamic> json) {
     return Clinic(
-      id: json['id'] as String,
-      name: json['name'] as String,
-      city: json['city'] as String,
-      address: json['address'] as String,
+      id: json['id'] as String? ?? '',
+      name: json['name'] as String? ?? 'Не указана',
+      city: json['city'] as String? ?? '',
+      address: json['address'] as String? ?? '',
       phone: json['phone'] as String?,
     );
   }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is Clinic && runtimeType == other.runtimeType && id == other.id;
+
+  @override
+  int get hashCode => id.hashCode;
 }
 
 class DoctorProfile {
@@ -80,14 +162,24 @@ class DoctorProfile {
 
   factory DoctorProfile.fromJson(Map<String, dynamic> json) {
     return DoctorProfile(
-      id: json['id'] as String,
-      specialization: json['specialization'] as String,
-      user: AppUser.fromJson(json['user'] as Map<String, dynamic>),
-      clinic: Clinic.fromJson(json['clinic'] as Map<String, dynamic>),
+      id: json['id'] as String? ?? '',
+      specialization: json['specialization'] as String? ?? 'Врач',
+      user: AppUser.fromJson(json['user'] as Map<String, dynamic>? ?? {}),
+      clinic: Clinic.fromJson(json['clinic'] as Map<String, dynamic>? ?? {}),
       roomNumber: json['roomNumber'] as String?,
       scheduleText: json['scheduleText'] as String?,
     );
   }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is DoctorProfile &&
+          runtimeType == other.runtimeType &&
+          id == other.id;
+
+  @override
+  int get hashCode => id.hashCode;
 }
 
 class Appointment {
@@ -98,6 +190,7 @@ class Appointment {
     required this.status,
     required this.doctor,
     required this.clinic,
+    this.patientProfile,
     this.prescriptionId,
     this.specialization,
     this.roomNumber,
@@ -109,6 +202,7 @@ class Appointment {
   final String status;
   final AppUser doctor;
   final Clinic clinic;
+  final PatientProfile? patientProfile;
   final String? prescriptionId;
   final String? specialization;
   final String? roomNumber;
@@ -122,32 +216,65 @@ class Appointment {
       complaint: json['complaint'] as String,
       status: json['status'] as String,
       doctor: AppUser.fromJson(doctorJson),
-      clinic: Clinic.fromJson(json['clinic'] as Map<String, dynamic>),
-      prescriptionId: (json['prescription'] as Map<String, dynamic>?)?['id'] as String?,
+      clinic: Clinic.fromJson(json['clinic'] as Map<String, dynamic>? ?? {}),
+      patientProfile: json['patientProfile'] != null
+          ? PatientProfile.fromJson(
+              json['patientProfile'] as Map<String, dynamic>)
+          : null,
+      prescriptionId:
+          (json['prescription'] as Map<String, dynamic>?)?['id'] as String?,
       specialization: doctorProfile?['specialization'] as String?,
       roomNumber: doctorProfile?['roomNumber'] as String?,
     );
   }
+}
 
-  Appointment copyWith({
-    String? status,
-    DateTime? appointmentDate,
-    String? prescriptionId,
-  }) {
-    return Appointment(
-      id: id,
-      appointmentDate: appointmentDate ?? this.appointmentDate,
-      complaint: complaint,
-      status: status ?? this.status,
-      doctor: doctor,
-      clinic: clinic,
-      prescriptionId: prescriptionId ?? this.prescriptionId,
-      specialization: specialization,
-      roomNumber: roomNumber,
+class Prescription {
+  const Prescription({
+    required this.id,
+    required this.diagnosis,
+    required this.rawText,
+    required this.status,
+    required this.medicines,
+    this.patientProfile,
+    this.doctorComment,
+    this.aiSummary,
+    this.aiDisclaimer,
+  });
+
+  final String id;
+  final String diagnosis;
+  final String rawText;
+  final String status;
+  final String? doctorComment;
+  final String? aiSummary;
+  final String? aiDisclaimer;
+  final List<PrescriptionMedicine> medicines;
+  final PatientProfile? patientProfile;
+
+  factory Prescription.fromJson(Map<String, dynamic> json) {
+    final medicines = (json['medicines'] as List<dynamic>? ?? [])
+        .map(
+          (item) => PrescriptionMedicine.fromJson(item as Map<String, dynamic>),
+        )
+        .toList();
+
+    return Prescription(
+      id: json['id'] as String,
+      diagnosis: json['diagnosis'] as String,
+      rawText: json['rawText'] as String,
+      status: json['status'] as String,
+      doctorComment: json['doctorComment'] as String?,
+      aiSummary: json['aiSummary'] as String?,
+      aiDisclaimer: json['aiDisclaimer'] as String?,
+      medicines: medicines,
+      patientProfile: json['patientProfile'] != null
+          ? PatientProfile.fromJson(
+              json['patientProfile'] as Map<String, dynamic>)
+          : null,
     );
   }
 }
-
 
 class PrescriptionMedicine {
   const PrescriptionMedicine({
@@ -180,49 +307,6 @@ class PrescriptionMedicine {
       instruction: json['instruction'] as String,
       quantityNeeded: json['quantityNeeded'] as int,
       activeSubstance: json['activeSubstance'] as String,
-    );
-  }
-}
-
-class Prescription {
-  const Prescription({
-    required this.id,
-    required this.diagnosis,
-    required this.rawText,
-    required this.status,
-    required this.medicines,
-    this.doctorComment,
-    this.aiSummary,
-    this.aiDisclaimer,
-  });
-
-  final String id;
-  final String diagnosis;
-  final String rawText;
-  final String status;
-  final String? doctorComment;
-  final String? aiSummary;
-  final String? aiDisclaimer;
-  final List<PrescriptionMedicine> medicines;
-
-  factory Prescription.fromJson(Map<String, dynamic> json) {
-    final medicines =
-        (json['medicines'] as List<dynamic>? ?? [])
-            .map(
-              (item) =>
-                  PrescriptionMedicine.fromJson(item as Map<String, dynamic>),
-            )
-            .toList();
-
-    return Prescription(
-      id: json['id'] as String,
-      diagnosis: json['diagnosis'] as String,
-      rawText: json['rawText'] as String,
-      status: json['status'] as String,
-      doctorComment: json['doctorComment'] as String?,
-      aiSummary: json['aiSummary'] as String?,
-      aiDisclaimer: json['aiDisclaimer'] as String?,
-      medicines: medicines,
     );
   }
 }
@@ -342,14 +426,13 @@ class MedicineProductGroup {
   final List<MarketProduct> products;
 
   factory MedicineProductGroup.fromJson(Map<String, dynamic> json) {
-    final products =
-        (json['products'] as List<dynamic>? ?? [])
-            .map(
-              (item) => MarketProduct.fromJson(
-                item['product'] as Map<String, dynamic>,
-              ),
-            )
-            .toList();
+    final products = (json['products'] as List<dynamic>? ?? [])
+        .map(
+          (item) => MarketProduct.fromJson(
+            item['product'] as Map<String, dynamic>,
+          ),
+        )
+        .toList();
 
     return MedicineProductGroup(
       prescriptionMedicine: PrescriptionMedicine.fromJson(

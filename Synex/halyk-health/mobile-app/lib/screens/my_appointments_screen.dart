@@ -13,6 +13,7 @@ const _greenLight = Color(0xFFE6F4F1);
 const _gold = Color(0xFFF0A500);
 const _goldLight = Color(0xFFFFF8E7);
 const _bg = Color(0xFFF5F7F8);
+const _dark = Color(0xFF073E35);
 
 // ─── Status helpers ────────────────────────────────────────────────────────
 enum _Filter { all, active, pending, history, cancelled }
@@ -74,6 +75,8 @@ class MyAppointmentsScreen extends StatefulWidget {
 
 class _MyAppointmentsScreenState extends State<MyAppointmentsScreen> {
   List<Appointment> _appointments = [];
+  List<PatientProfile> _profiles = [];
+  PatientProfile? _selectedProfile;
   bool _loading = true;
   String? _error;
   _Filter _activeFilter = _Filter.all;
@@ -81,7 +84,25 @@ class _MyAppointmentsScreenState extends State<MyAppointmentsScreen> {
   @override
   void initState() {
     super.initState();
-    _load();
+    _init();
+  }
+
+  Future<void> _init() async {
+    try {
+      final profiles = await widget.apiService.getPatientProfiles();
+      setState(() {
+        _profiles = profiles;
+        // Don't pre-select any specific profile to show "All" by default, 
+        // or we can just keep _selectedProfile as null for "All family".
+      });
+      await _load();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.toString().replaceFirst('Exception: ', '');
+        _loading = false;
+      });
+    }
   }
 
   Future<void> _load() async {
@@ -90,7 +111,9 @@ class _MyAppointmentsScreenState extends State<MyAppointmentsScreen> {
       _error = null;
     });
     try {
-      final data = await widget.apiService.getMyAppointments();
+      final data = await widget.apiService.getMyAppointments(
+        patientProfileId: _selectedProfile?.id,
+      );
       if (!mounted) return;
       setState(() {
         _appointments = data;
@@ -212,6 +235,7 @@ class _MyAppointmentsScreenState extends State<MyAppointmentsScreen> {
     _showLoading('Создаём новую запись…');
     try {
       await widget.apiService.createAppointment(
+        patientProfileId: apt.patientProfile?.id ?? '',
         doctorId: apt.doctor.id,
         clinicId: apt.clinic.id,
         appointmentDate: DateTime.now().add(const Duration(days: 1)),
@@ -288,6 +312,14 @@ class _MyAppointmentsScreenState extends State<MyAppointmentsScreen> {
                 ],
               ),
               const SizedBox(height: 16),
+              if (apt.patientProfile != null) ...[
+                _DetailRow(
+                  icon: Icons.person_outline,
+                  label: apt.patientProfile!.fullName,
+                  sub: apt.patientProfile!.relationLabel,
+                ),
+                const SizedBox(height: 10),
+              ],
               _DetailRow(
                 icon: Icons.medical_services_outlined,
                 label: apt.specialization ?? 'Врач',
@@ -379,6 +411,7 @@ class _MyAppointmentsScreenState extends State<MyAppointmentsScreen> {
       body: CustomScrollView(
         slivers: [
           _buildHeader(context),
+          SliverToBoxAdapter(child: _buildFamilyFilter()),
           SliverToBoxAdapter(child: _buildFilterBar()),
           if (_loading)
             const SliverFillRemaining(
@@ -452,7 +485,7 @@ class _MyAppointmentsScreenState extends State<MyAppointmentsScreen> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'Следите за статусом приёмов\nи историей посещений',
+                    'Следите за статусом приёмов и историей всей семьи',
                     style: TextStyle(
                       color: Colors.white.withValues(alpha: 0.82),
                       fontSize: 13,
@@ -474,10 +507,55 @@ class _MyAppointmentsScreenState extends State<MyAppointmentsScreen> {
     );
   }
 
+  Widget _buildFamilyFilter() {
+    if (_profiles.isEmpty) return const SizedBox.shrink();
+    
+    return Container(
+      color: Colors.white,
+      height: 64,
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        itemCount: _profiles.length + 1,
+        itemBuilder: (context, index) {
+          final isAll = index == 0;
+          final profile = isAll ? null : _profiles[index - 1];
+          final isSelected = _selectedProfile == profile;
+          
+          return Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: FilterChip(
+              label: Text(isAll ? 'Все' : profile!.fullName),
+              selected: isSelected,
+              onSelected: (val) {
+                setState(() => _selectedProfile = profile);
+                _load();
+              },
+              selectedColor: _greenLight,
+              checkmarkColor: _green,
+              labelStyle: TextStyle(
+                color: isSelected ? _greenDark : const Color(0xFF5A6A72),
+                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                fontSize: 13,
+              ),
+              backgroundColor: _bg,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+                side: BorderSide(
+                  color: isSelected ? _green : const Color(0xFFDDE3E5),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   Widget _buildFilterBar() {
     return Container(
       color: Colors.white,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         child: Row(
@@ -609,6 +687,23 @@ class _AppointmentCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                if (apt.patientProfile != null) ...[
+                  Row(
+                    children: [
+                      const Icon(Icons.person_outline, size: 14, color: _green),
+                      const SizedBox(width: 6),
+                      Text(
+                        '${apt.patientProfile!.fullName} (${apt.patientProfile!.relationLabel})',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: _dark,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                ],
                 // Doctor info
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -801,20 +896,28 @@ class _DetailRow extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Icon(icon, size: 16, color: const Color(0xFF8A9BA3)),
-        const SizedBox(width: 8),
+        const SizedBox(width: 10),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(label,
-                  style: const TextStyle(
-                      fontSize: 13,
-                      color: Color(0xFF4A5B63),
-                      fontWeight: FontWeight.w500)),
+              Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF1A2B33),
+                ),
+              ),
               if (sub != null)
-                Text(sub!,
-                    style: const TextStyle(
-                        fontSize: 12, color: Color(0xFF8A9BA3))),
+                Text(
+                  sub!,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFF8A9BA3),
+                    height: 1.3,
+                  ),
+                ),
             ],
           ),
         ),
@@ -824,8 +927,7 @@ class _DetailRow extends StatelessWidget {
 }
 
 class _DetailItem extends StatelessWidget {
-  const _DetailItem(
-      {required this.icon, required this.label, required this.value});
+  const _DetailItem({required this.icon, required this.label, required this.value});
 
   final IconData icon;
   final String label;
@@ -835,18 +937,23 @@ class _DetailItem extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Icon(icon, size: 15, color: const Color(0xFF8A9BA3)),
-        const SizedBox(width: 6),
+        Icon(icon, size: 14, color: const Color(0xFF8A9BA3)),
+        const SizedBox(width: 8),
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(label,
-                style: const TextStyle(fontSize: 11, color: Color(0xFF8A9BA3))),
-            Text(value,
-                style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF1A2B33))),
+            Text(
+              label,
+              style: const TextStyle(fontSize: 11, color: Color(0xFF8A9BA3)),
+            ),
+            Text(
+              value,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF1A2B33),
+              ),
+            ),
           ],
         ),
       ],
@@ -856,16 +963,15 @@ class _DetailItem extends StatelessWidget {
 
 class _StatusBadge extends StatelessWidget {
   const _StatusBadge({required this.status});
-
   final String status;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
         color: _statusBg(status),
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(12),
       ),
       child: Text(
         _statusLabel(status),
@@ -880,9 +986,7 @@ class _StatusBadge extends StatelessWidget {
 }
 
 class _FilledBtn extends StatelessWidget {
-  const _FilledBtn(
-      {required this.label, required this.icon, required this.onTap});
-
+  const _FilledBtn({required this.label, required this.icon, required this.onTap});
   final String label;
   final IconData icon;
   final VoidCallback onTap;
@@ -891,29 +995,23 @@ class _FilledBtn extends StatelessWidget {
   Widget build(BuildContext context) {
     return SizedBox(
       height: 40,
+      width: double.infinity,
       child: FilledButton.icon(
         onPressed: onTap,
+        icon: Icon(icon, size: 16),
+        label: Text(label, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
         style: FilledButton.styleFrom(
           backgroundColor: _green,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          padding: const EdgeInsets.symmetric(horizontal: 12),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          padding: EdgeInsets.zero,
         ),
-        icon: Icon(icon, size: 16),
-        label: Text(label,
-            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
       ),
     );
   }
 }
 
 class _OutlineBtn extends StatelessWidget {
-  const _OutlineBtn(
-      {required this.label,
-      required this.icon,
-      required this.color,
-      required this.onTap});
-
+  const _OutlineBtn({required this.label, required this.icon, required this.color, required this.onTap});
   final String label;
   final IconData icon;
   final Color color;
@@ -923,320 +1021,99 @@ class _OutlineBtn extends StatelessWidget {
   Widget build(BuildContext context) {
     return SizedBox(
       height: 40,
+      width: double.infinity,
       child: OutlinedButton.icon(
         onPressed: onTap,
+        icon: Icon(icon, size: 16, color: color),
+        label: Text(label, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: color)),
         style: OutlinedButton.styleFrom(
-          foregroundColor: color,
-          side: BorderSide(color: color.withValues(alpha: 0.5)),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          padding: const EdgeInsets.symmetric(horizontal: 12),
+          side: BorderSide(color: color.withValues(alpha: 0.3)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          padding: EdgeInsets.zero,
         ),
-        icon: Icon(icon, size: 16),
-        label: Text(label,
-            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
       ),
     );
   }
 }
 
 class _GoldButton extends StatelessWidget {
-  const _GoldButton(
-      {required this.label, required this.icon, required this.onTap});
-
+  const _GoldButton({required this.label, required this.icon, required this.onTap});
   final String label;
   final IconData icon;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        decoration: BoxDecoration(
-          color: _gold,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, color: Colors.white, size: 18),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w700,
-                fontSize: 12,
-                height: 1.3,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ─── Reschedule Bottom Sheet ───────────────────────────────────────────────
-class _RescheduleSheet extends StatefulWidget {
-  const _RescheduleSheet({required this.onConfirm});
-
-  final void Function(DateTime date, TimeOfDay time) onConfirm;
-
-  @override
-  State<_RescheduleSheet> createState() => _RescheduleSheetState();
-}
-
-class _RescheduleSheetState extends State<_RescheduleSheet> {
-  DateTime? _selectedDate;
-  TimeOfDay? _selectedTime;
-
-  static const _times = [
-    '09:00',
-    '09:30',
-    '10:00',
-    '10:30',
-    '11:00',
-    '11:30',
-    '14:00',
-    '14:30',
-    '15:00',
-    '15:30',
-    '16:00',
-    '16:30',
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).viewInsets.bottom + 24,
-        left: 20,
-        right: 20,
-        top: 20,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Handle
-          Center(
-            child: Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: const Color(0xFFDDE3E5),
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-          ),
-          const SizedBox(height: 20),
-          const Text(
-            'Перенести запись',
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
-          ),
-          const SizedBox(height: 4),
-          const Text(
-            'Выберите новую дату и удобное время',
-            style: TextStyle(fontSize: 13, color: Color(0xFF8A9BA3)),
-          ),
-          const SizedBox(height: 20),
-
-          // Date picker
-          const Text('Дата',
-              style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF4A5B63))),
-          const SizedBox(height: 8),
-          GestureDetector(
-            onTap: _pickDate,
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-              decoration: BoxDecoration(
-                border: Border.all(
-                    color: _selectedDate != null
-                        ? _green
-                        : const Color(0xFFDDE3E5)),
-                borderRadius: BorderRadius.circular(12),
-                color: _selectedDate != null ? _greenLight : _bg,
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.calendar_today, size: 18, color: _green),
-                  const SizedBox(width: 10),
-                  Text(
-                    _selectedDate == null
-                        ? 'Выбрать дату'
-                        : DateFormat('dd MMMM yyyy', 'ru')
-                            .format(_selectedDate!),
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: _selectedDate == null
-                          ? const Color(0xFF8A9BA3)
-                          : const Color(0xFF1A2B33),
-                      fontWeight: _selectedDate != null
-                          ? FontWeight.w600
-                          : FontWeight.normal,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // Time picker
-          const Text('Время',
-              style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF4A5B63))),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: _times.map((t) {
-              final isSelected = _selectedTime != null &&
-                  '${_selectedTime!.hour.toString().padLeft(2, '0')}:${_selectedTime!.minute.toString().padLeft(2, '0')}' ==
-                      t;
-              return GestureDetector(
-                onTap: () {
-                  final parts = t.split(':');
-                  setState(() => _selectedTime = TimeOfDay(
-                      hour: int.parse(parts[0]), minute: int.parse(parts[1])));
-                },
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 150),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: isSelected ? _green : _bg,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                        color: isSelected ? _green : const Color(0xFFDDE3E5)),
-                  ),
-                  child: Text(
-                    t,
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color:
-                          isSelected ? Colors.white : const Color(0xFF4A5B63),
-                    ),
-                  ),
+    return Material(
+      color: _gold,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          child: Column(
+            children: [
+              Icon(icon, color: Colors.white, size: 20),
+              const SizedBox(height: 4),
+              Text(
+                label,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w900,
+                  height: 1.1,
                 ),
-              );
-            }).toList(),
-          ),
-          const SizedBox(height: 24),
-
-          // Confirm
-          SizedBox(
-            width: double.infinity,
-            height: 50,
-            child: FilledButton(
-              onPressed: _selectedDate != null && _selectedTime != null
-                  ? () => widget.onConfirm(_selectedDate!, _selectedTime!)
-                  : null,
-              style: FilledButton.styleFrom(
-                backgroundColor: _green,
-                disabledBackgroundColor: const Color(0xFFDDE3E5),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
               ),
-              child: const Text('Подтвердить перенос',
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
-            ),
+            ],
           ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _pickDate() async {
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: DateTime.now().add(const Duration(days: 1)),
-      firstDate: DateTime.now().add(const Duration(days: 1)),
-      lastDate: DateTime.now().add(const Duration(days: 60)),
-      builder: (ctx, child) => Theme(
-        data: Theme.of(ctx).copyWith(
-          colorScheme: const ColorScheme.light(primary: _green),
         ),
-        child: child!,
       ),
     );
-    if (picked != null) setState(() => _selectedDate = picked);
   }
 }
 
-// ─── Empty State ──────────────────────────────────────────────────────────
 class _EmptyState extends StatelessWidget {
   const _EmptyState({required this.filter, required this.onNewAppointment});
-
   final _Filter filter;
   final VoidCallback onNewAppointment;
 
   @override
   Widget build(BuildContext context) {
-    final isAll = filter == _Filter.all;
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(40),
         child: Column(
-          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Container(
-              width: 80,
-              height: 80,
-              decoration: BoxDecoration(
-                color: _greenLight,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: const Icon(Icons.calendar_month_outlined,
-                  size: 40, color: _green),
+              padding: const EdgeInsets.all(24),
+              decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+              child: const Icon(Icons.event_busy, size: 64, color: Color(0xFFCBD5E1)),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 24),
             Text(
-              isAll ? 'У вас пока нет записей' : 'Нет записей в этой категории',
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.w700,
-                color: Color(0xFF1A2B33),
-              ),
+              filter == _Filter.all ? 'Записей пока нет' : 'Нет записей в этой категории',
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF1E293B)),
             ),
-            const SizedBox(height: 8),
-            if (isAll)
-              const Text(
-                'Запишитесь к врачу прямо сейчас',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 14, color: Color(0xFF8A9BA3)),
+            const SizedBox(height: 12),
+            const Text(
+              'Вы можете записаться к врачу прямо сейчас через Halyk Health',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Color(0xFF64748B), height: 1.5),
+            ),
+            const SizedBox(height: 32),
+            FilledButton.icon(
+              onPressed: onNewAppointment,
+              style: FilledButton.styleFrom(
+                backgroundColor: _green,
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
-            if (isAll) ...[
-              const SizedBox(height: 24),
-              FilledButton.icon(
-                onPressed: onNewAppointment,
-                icon: const Icon(Icons.add),
-                label: const Text('Записаться к врачу'),
-                style: FilledButton.styleFrom(
-                  backgroundColor: _green,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                ),
-              ),
-            ],
+              icon: const Icon(Icons.add),
+              label: const Text('Записаться на прием'),
+            ),
           ],
         ),
       ),
@@ -1244,10 +1121,8 @@ class _EmptyState extends StatelessWidget {
   }
 }
 
-// ─── Error State ──────────────────────────────────────────────────────────
 class _ErrorState extends StatelessWidget {
   const _ErrorState({required this.error, required this.onRetry});
-
   final String error;
   final VoidCallback onRetry;
 
@@ -1257,37 +1132,79 @@ class _ErrorState extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.all(32),
         child: Column(
-          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.cloud_off_outlined,
-                size: 56, color: Color(0xFFCFD8DC)),
+            const Icon(Icons.error_outline, size: 48, color: Color(0xFFB23A2F)),
             const SizedBox(height: 16),
-            const Text(
-              'Не удалось загрузить записи',
-              style: TextStyle(
-                  fontSize: 17,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFF1A2B33)),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              error,
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 13, color: Color(0xFF8A9BA3)),
-            ),
+            Text(error, textAlign: TextAlign.center),
             const SizedBox(height: 24),
-            FilledButton.icon(
-              onPressed: onRetry,
-              icon: const Icon(Icons.refresh),
-              label: const Text('Повторить'),
-              style: FilledButton.styleFrom(
-                backgroundColor: _green,
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
-              ),
-            ),
+            TextButton.icon(onPressed: onRetry, icon: const Icon(Icons.refresh), label: const Text('Повторить')),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _RescheduleSheet extends StatefulWidget {
+  const _RescheduleSheet({required this.onConfirm});
+  final Function(DateTime date, TimeOfDay time) onConfirm;
+
+  @override
+  State<_RescheduleSheet> createState() => _RescheduleSheetState();
+}
+
+class _RescheduleSheetState extends State<_RescheduleSheet> {
+  DateTime? _date;
+  TimeOfDay? _time;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      padding: const EdgeInsets.fromLTRB(24, 8, 24, 32),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2))),
+          const SizedBox(height: 24),
+          const Text('Выберите новое время', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 24),
+          ListTile(
+            leading: const Icon(Icons.calendar_today, color: _green),
+            title: Text(_date == null ? 'Выберите дату' : DateFormat('dd.MM.yyyy').format(_date!)),
+            onTap: () async {
+              final d = await showDatePicker(
+                context: context,
+                initialDate: DateTime.now().add(const Duration(days: 1)),
+                firstDate: DateTime.now(),
+                lastDate: DateTime.now().add(const Duration(days: 30)),
+              );
+              if (d != null) setState(() => _date = d);
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.access_time, color: _green),
+            title: Text(_time == null ? 'Выберите время' : _time!.format(context)),
+            onTap: () async {
+              final t = await showTimePicker(context: context, initialTime: const TimeOfDay(hour: 9, minute: 0));
+              if (t != null) setState(() => _time = t);
+            },
+          ),
+          const SizedBox(height: 32),
+          SizedBox(
+            width: double.infinity,
+            height: 52,
+            child: FilledButton(
+              onPressed: (_date != null && _time != null) ? () => widget.onConfirm(_date!, _time!) : null,
+              style: FilledButton.styleFrom(backgroundColor: _green, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+              child: const Text('Подтвердить перенос'),
+            ),
+          ),
+        ],
       ),
     );
   }

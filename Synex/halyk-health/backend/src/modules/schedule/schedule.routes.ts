@@ -13,9 +13,15 @@ router.get(
   requireRole(UserRole.PATIENT),
   asyncHandler(async (req, res) => {
     const auth = getAuth(req);
+    const { patientProfileId } = req.query;
 
     const schedule = await prisma.medicationSchedule.findMany({
-      where: { patientId: auth.userId },
+      where: {
+        patientProfile: {
+          userId: auth.userId,
+          ...(patientProfileId ? { id: patientProfileId as string } : {})
+        }
+      },
       include: {
         prescriptionMedicine: {
           include: { prescription: true }
@@ -34,9 +40,12 @@ router.patch(
   requireRole(UserRole.PATIENT),
   asyncHandler(async (req, res) => {
     const auth = getAuth(req);
-    const item = await prisma.medicationSchedule.findUnique({ where: { id: req.params.id } });
+    const item = await prisma.medicationSchedule.findUnique({
+      where: { id: req.params.id },
+      include: { patientProfile: true }
+    });
 
-    if (!item || item.patientId !== auth.userId) {
+    if (!item || item.patientProfile.userId !== auth.userId) {
       throw new HttpError(404, "Schedule item not found");
     }
 
@@ -56,9 +65,12 @@ router.patch(
   requireRole(UserRole.PATIENT),
   asyncHandler(async (req, res) => {
     const auth = getAuth(req);
-    const item = await prisma.medicationSchedule.findUnique({ where: { id: req.params.id } });
+    const item = await prisma.medicationSchedule.findUnique({
+      where: { id: req.params.id },
+      include: { patientProfile: true }
+    });
 
-    if (!item || item.patientId !== auth.userId) {
+    if (!item || item.patientProfile.userId !== auth.userId) {
       throw new HttpError(404, "Schedule item not found");
     }
 
@@ -73,4 +85,3 @@ router.patch(
 );
 
 export default router;
-

@@ -10,6 +10,7 @@ import { validateBody } from "../../common/validation";
 const router = Router();
 
 const createAppointmentSchema = z.object({
+  patientProfileId: z.string().uuid(),
   doctorId: z.string().uuid(),
   clinicId: z.string().uuid(),
   appointmentDate: z.string().datetime(),
@@ -25,7 +26,18 @@ const rescheduleSchema = z.object({
 });
 
 const appointmentInclude = {
-  patient: { select: { id: true, fullName: true, email: true, phone: true, role: true } },
+  patientProfile: {
+    include: {
+      user: {
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+          phone: true
+        }
+      }
+    }
+  },
   doctor: {
     select: {
       id: true,
@@ -54,6 +66,14 @@ router.post(
   asyncHandler(async (req, res) => {
     const auth = getAuth(req);
 
+    const profile = await prisma.patientProfile.findFirst({
+      where: { id: req.body.patientProfileId, userId: auth.userId }
+    });
+
+    if (!profile) {
+      throw new HttpError(404, "Patient profile not found");
+    }
+
     const doctor = await prisma.user.findUnique({
       where: { id: req.body.doctorId },
       include: { doctorProfile: true }
@@ -69,7 +89,7 @@ router.post(
 
     const appointment = await prisma.appointment.create({
       data: {
-        patientId: auth.userId,
+        patientProfileId: req.body.patientProfileId,
         doctorId: req.body.doctorId,
         clinicId: req.body.clinicId,
         appointmentDate: new Date(req.body.appointmentDate),
@@ -82,16 +102,22 @@ router.post(
   })
 );
 
-// GET /api/appointments/my — get current patient's appointments
+// GET /api/appointments/my — get current user's family appointments
 router.get(
   "/my",
   authenticate,
   requireRole(UserRole.PATIENT),
   asyncHandler(async (req, res) => {
     const auth = getAuth(req);
+    const { patientProfileId } = req.query;
 
     const appointments = await prisma.appointment.findMany({
-      where: { patientId: auth.userId },
+      where: {
+        patientProfile: {
+          userId: auth.userId,
+          ...(patientProfileId ? { id: patientProfileId as string } : {})
+        }
+      },
       include: appointmentInclude,
       orderBy: { appointmentDate: "desc" }
     });
@@ -126,7 +152,9 @@ router.patch(
   validateBody(updateStatusSchema),
   asyncHandler(async (req, res) => {
     const auth = getAuth(req);
-    const appointment = await prisma.appointment.findUnique({ where: { id: req.params.id } });
+    const appointment = await prisma.appointment.findUnique({
+      where: { id: req.params.id }
+    });
 
     if (!appointment) {
       throw new HttpError(404, "Appointment not found");
@@ -146,21 +174,24 @@ router.patch(
   })
 );
 
-// PATCH /api/appointments/:id/cancel — patient cancels own appointment
+// PATCH /api/appointments/:id/cancel — patient cancels own family appointment
 router.patch(
   "/:id/cancel",
   authenticate,
   requireRole(UserRole.PATIENT),
   asyncHandler(async (req, res) => {
     const auth = getAuth(req);
-    const appointment = await prisma.appointment.findUnique({ where: { id: req.params.id } });
+    const appointment = await prisma.appointment.findUnique({
+      where: { id: req.params.id },
+      include: { patientProfile: true }
+    });
 
     if (!appointment) {
       throw new HttpError(404, "Appointment not found");
     }
 
-    if (appointment.patientId !== auth.userId) {
-      throw new HttpError(403, "You can only cancel your own appointments");
+    if (appointment.patientProfile.userId !== auth.userId) {
+      throw new HttpError(403, "You can only cancel your own family appointments");
     }
 
     if (appointment.status === AppointmentStatus.COMPLETED || appointment.status === AppointmentStatus.CANCELLED) {
@@ -177,7 +208,7 @@ router.patch(
   })
 );
 
-// PATCH /api/appointments/:id/reschedule — patient reschedules own appointment
+// PATCH /api/appointments/:id/reschedule — patient reschedules own family appointment
 router.patch(
   "/:id/reschedule",
   authenticate,
@@ -185,14 +216,17 @@ router.patch(
   validateBody(rescheduleSchema),
   asyncHandler(async (req, res) => {
     const auth = getAuth(req);
-    const appointment = await prisma.appointment.findUnique({ where: { id: req.params.id } });
+    const appointment = await prisma.appointment.findUnique({
+      where: { id: req.params.id },
+      include: { patientProfile: true }
+    });
 
     if (!appointment) {
       throw new HttpError(404, "Appointment not found");
     }
 
-    if (appointment.patientId !== auth.userId) {
-      throw new HttpError(403, "You can only reschedule your own appointments");
+    if (appointment.patientProfile.userId !== auth.userId) {
+      throw new HttpError(403, "You can only reschedule your own family appointments");
     }
 
     if (

@@ -12,6 +12,7 @@ import notificationsRoutes from "./modules/notifications/notifications.routes";
 import prescriptionsRoutes from "./modules/prescriptions/prescriptions.routes";
 import scheduleRoutes from "./modules/schedule/schedule.routes";
 import usersRoutes from "./modules/users/users.routes";
+import patientProfilesRoutes from "./modules/patient-profiles/patient-profiles.routes";
 import { errorHandler, notFoundHandler } from "./common/error-handler";
 import { prisma } from "./common/prisma";
 import { swaggerDocument } from "./common/swagger";
@@ -39,6 +40,7 @@ app.use("/api/ai", aiRoutes);
 app.use("/api/market", marketRoutes);
 app.use("/api/schedule", scheduleRoutes);
 app.use("/api/notifications", notificationsRoutes);
+app.use("/api/patient-profiles", patientProfilesRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
