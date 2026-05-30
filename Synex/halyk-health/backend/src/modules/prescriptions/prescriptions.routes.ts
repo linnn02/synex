@@ -93,11 +93,16 @@ router.post(
     const auth = getAuth(req);
     const body = req.body as z.infer<typeof createPrescriptionSchema>;
     const appointment = await prisma.appointment.findUnique({
-      where: { id: body.appointmentId }
+      where: { id: body.appointmentId },
+      include: { prescription: { select: { id: true } } }
     });
 
     if (!appointment) {
       throw new HttpError(404, "Appointment not found");
+    }
+
+    if (appointment.prescription) {
+      throw new HttpError(409, "Для этого приёма уже существует назначение");
     }
 
     if (auth.role === UserRole.DOCTOR && appointment.doctorId !== auth.userId) {

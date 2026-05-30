@@ -34,6 +34,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _index = 0;
+  int _refreshKey = 0;
 
   Future<void> _openAppointmentFlow() async {
     final created = await Navigator.push<bool>(
@@ -46,7 +47,10 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
     if (mounted && created == true) {
-      setState(() => _index = 1);
+      setState(() {
+        _refreshKey++;
+        _index = 1;
+      });
     }
   }
 
@@ -63,6 +67,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     final pages = [
       _HomeOverview(
+        key: ValueKey(_refreshKey),
         apiService: widget.apiService,
         user: widget.user,
         onBook: _openAppointmentFlow,
@@ -72,10 +77,19 @@ class _HomeScreenState extends State<HomeScreen> {
         onOpenMarket: () => setState(() => _index = 3),
         onOpenSchedule: () => setState(() => _index = 4),
       ),
-      MyAppointmentsScreen(apiService: widget.apiService),
-      MyPrescriptionsScreen(apiService: widget.apiService),
+      MyAppointmentsScreen(
+        key: ValueKey('appointments_$_refreshKey'),
+        apiService: widget.apiService,
+      ),
+      MyPrescriptionsScreen(
+        key: ValueKey('prescriptions_$_refreshKey'),
+        apiService: widget.apiService,
+      ),
       MarketProductsScreen(apiService: widget.apiService),
-      MedicationScheduleScreen(apiService: widget.apiService),
+      MedicationScheduleScreen(
+        key: ValueKey('schedule_$_refreshKey'),
+        apiService: widget.apiService,
+      ),
     ];
 
     return Scaffold(

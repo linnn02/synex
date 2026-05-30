@@ -132,16 +132,26 @@ export function AppointmentsPage({
                     </td>
                     <td data-label="Действия">
                       <div className="action-row" onClick={(event) => event.stopPropagation()}>
-                        <button title="Подтвердить" onClick={() => onStatusChange(appointment.id, "CONFIRMED")}>
-                          <Check size={17} />
-                        </button>
-                        <button title="Завершить" onClick={() => onStatusChange(appointment.id, "COMPLETED")}>
-                          <Check size={17} />
-                        </button>
-                        <button title="Отменить" onClick={() => onStatusChange(appointment.id, "CANCELLED")}>
-                          <X size={17} />
-                        </button>
-                        <button title="Создать назначение" onClick={() => onCreatePrescription(appointment)}>
+                        {appointment.status === "PENDING" && (
+                          <button title="Подтвердить" onClick={() => onStatusChange(appointment.id, "CONFIRMED")}>
+                            <Check size={17} />
+                          </button>
+                        )}
+                        {appointment.status !== "COMPLETED" && appointment.status !== "CANCELLED" && (
+                          <button title="Завершить" onClick={() => onStatusChange(appointment.id, "COMPLETED")}>
+                            <Check size={17} />
+                          </button>
+                        )}
+                        {appointment.status !== "CANCELLED" && appointment.status !== "COMPLETED" && (
+                          <button title="Отменить" onClick={() => onStatusChange(appointment.id, "CANCELLED")}>
+                            <X size={17} />
+                          </button>
+                        )}
+                        <button
+                          title={appointment.prescription ? "Назначение уже создано" : "Создать назначение"}
+                          onClick={() => onCreatePrescription(appointment)}
+                          disabled={!!appointment.prescription || appointment.status === "CANCELLED"}
+                        >
                           <ClipboardPlus size={17} />
                         </button>
                       </div>
