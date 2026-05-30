@@ -73,7 +73,16 @@ function mockQwenParse(rawText: string): ParsedPrescription {
 function isOllamaProvider() {
   const provider = process.env.QWEN_PROVIDER?.toLowerCase();
   const apiUrl = process.env.QWEN_API_URL?.toLowerCase() || "";
-  return provider === "ollama" || apiUrl.includes("11434") || apiUrl.includes("/api/chat");
+  
+  if (provider === "ollama" || apiUrl.includes("11434") || apiUrl.includes("/api/chat")) {
+    return true;
+  }
+  
+  if (!process.env.QWEN_API_KEY) {
+    return true;
+  }
+  
+  return false;
 }
 
 function buildMessages(rawText: string) {

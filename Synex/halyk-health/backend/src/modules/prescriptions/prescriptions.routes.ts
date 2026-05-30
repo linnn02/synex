@@ -216,30 +216,32 @@ router.post(
       }
     });
 
-    await prisma.prescriptionMedicine.deleteMany({
+    const existingMedicines = await prisma.prescriptionMedicine.count({
       where: { prescriptionId: prescription.id }
     });
 
-    await prisma.prescriptionMedicine.createMany({
-      data: parsed.medicines.map((medicine) => ({
-        prescriptionId: prescription.id,
-        medicineName: medicine.medicineName,
-        dosage: medicine.dosage,
-        frequency: medicine.frequency,
-        duration: medicine.duration,
-        instruction: medicine.instruction,
-        quantityNeeded: medicine.quantityNeeded,
-        activeSubstance: medicine.activeSubstance.toLowerCase()
-      }))
-    });
+    if (existingMedicines === 0 && parsed.medicines.length > 0) {
+      await prisma.prescriptionMedicine.createMany({
+        data: parsed.medicines.map((medicine) => ({
+          prescriptionId: prescription.id,
+          medicineName: medicine.medicineName,
+          dosage: medicine.dosage,
+          frequency: medicine.frequency,
+          duration: medicine.duration,
+          instruction: medicine.instruction,
+          quantityNeeded: medicine.quantityNeeded,
+          activeSubstance: medicine.activeSubstance.toLowerCase()
+        }))
+      });
 
-    const medicines = await prisma.prescriptionMedicine.findMany({
-      where: { prescriptionId: prescription.id }
-    });
+      const newMedicines = await prisma.prescriptionMedicine.findMany({
+        where: { prescriptionId: prescription.id }
+      });
 
-    for (const medicine of medicines) {
-      await createMedicineMatches(medicine);
-      await createScheduleForMedicine(prescription.patientProfileId, medicine);
+      for (const medicine of newMedicines) {
+        await createMedicineMatches(medicine);
+        await createScheduleForMedicine(prescription.patientProfileId, medicine);
+      }
     }
 
     const analyzedPrescription = await prisma.prescription.findUnique({
