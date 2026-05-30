@@ -15,6 +15,10 @@ const addCartItemSchema = z.object({
   quantity: z.number().int().positive().default(1)
 });
 
+const updateCartItemSchema = z.object({
+  quantity: z.number().int().min(0)
+});
+
 router.get(
   "/products",
   asyncHandler(async (_req, res) => {
@@ -104,6 +108,57 @@ router.get(
     });
 
     res.json(cart);
+  })
+);
+
+router.patch(
+  "/cart/:id",
+  authenticate,
+  requireRole(UserRole.PATIENT),
+  validateBody(updateCartItemSchema),
+  asyncHandler(async (req, res) => {
+    const auth = getAuth(req);
+    const cartItem = await prisma.cartItem.findUnique({
+      where: { id: req.params.id },
+      include: { product: true }
+    });
+
+    if (!cartItem || cartItem.patientId !== auth.userId) {
+      throw new HttpError(404, "Cart item not found");
+    }
+
+    if (req.body.quantity === 0) {
+      await prisma.cartItem.delete({ where: { id: req.params.id } });
+      res.json({ deleted: true });
+      return;
+    }
+
+    const updatedItem = await prisma.cartItem.update({
+      where: { id: req.params.id },
+      data: { quantity: req.body.quantity },
+      include: { product: true }
+    });
+
+    res.json(updatedItem);
+  })
+);
+
+router.delete(
+  "/cart/:id",
+  authenticate,
+  requireRole(UserRole.PATIENT),
+  asyncHandler(async (req, res) => {
+    const auth = getAuth(req);
+    const cartItem = await prisma.cartItem.findUnique({
+      where: { id: req.params.id }
+    });
+
+    if (!cartItem || cartItem.patientId !== auth.userId) {
+      throw new HttpError(404, "Cart item not found");
+    }
+
+    await prisma.cartItem.delete({ where: { id: req.params.id } });
+    res.json({ deleted: true });
   })
 );
 

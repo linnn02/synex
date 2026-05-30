@@ -5,9 +5,7 @@ import 'package:http/http.dart' as http;
 import '../models/api_models.dart';
 
 class ApiService {
-  ApiService({
-    this.baseUrl = 'http://localhost:4000/api',
-  });
+  ApiService({this.baseUrl = 'http://localhost:4000/api'});
 
   final String baseUrl;
   String? _token;
@@ -26,13 +24,20 @@ class ApiService {
   }
 
   Future<List<Clinic>> getClinics() async {
-    final response = await _request('/clinics', authenticated: false) as List<dynamic>;
-    return response.map((item) => Clinic.fromJson(item as Map<String, dynamic>)).toList();
+    final response =
+        await _request('/clinics', authenticated: false) as List<dynamic>;
+    return response
+        .map((item) => Clinic.fromJson(item as Map<String, dynamic>))
+        .toList();
   }
 
   Future<List<DoctorProfile>> getClinicDoctors(String clinicId) async {
-    final response = await _request('/clinics/$clinicId/doctors', authenticated: false) as List<dynamic>;
-    return response.map((item) => DoctorProfile.fromJson(item as Map<String, dynamic>)).toList();
+    final response =
+        await _request('/clinics/$clinicId/doctors', authenticated: false)
+            as List<dynamic>;
+    return response
+        .map((item) => DoctorProfile.fromJson(item as Map<String, dynamic>))
+        .toList();
   }
 
   Future<void> createAppointment({
@@ -55,35 +60,70 @@ class ApiService {
 
   Future<List<Appointment>> getMyAppointments() async {
     final response = await _request('/appointments/my') as List<dynamic>;
-    return response.map((item) => Appointment.fromJson(item as Map<String, dynamic>)).toList();
+    return response
+        .map((item) => Appointment.fromJson(item as Map<String, dynamic>))
+        .toList();
   }
 
   Future<List<Prescription>> getMyPrescriptions() async {
     final response = await _request('/prescriptions/my') as List<dynamic>;
-    return response.map((item) => Prescription.fromJson(item as Map<String, dynamic>)).toList();
+    return response
+        .map((item) => Prescription.fromJson(item as Map<String, dynamic>))
+        .toList();
   }
 
   Future<Prescription> analyzePrescription(String prescriptionId) async {
-    final response = await _request('/prescriptions/$prescriptionId/analyze-ai', method: 'POST');
+    final response = await _request(
+      '/prescriptions/$prescriptionId/analyze-ai',
+      method: 'POST',
+    );
     return Prescription.fromJson(response as Map<String, dynamic>);
   }
 
-  Future<List<MedicineProductGroup>> getPrescriptionMarketProducts(String prescriptionId) async {
-    final response = await _request('/prescriptions/$prescriptionId/market-products') as List<dynamic>;
-    return response.map((item) => MedicineProductGroup.fromJson(item as Map<String, dynamic>)).toList();
+  Future<List<MedicineProductGroup>> getPrescriptionMarketProducts(
+    String prescriptionId,
+  ) async {
+    final response =
+        await _request('/prescriptions/$prescriptionId/market-products')
+            as List<dynamic>;
+    return response
+        .map(
+          (item) => MedicineProductGroup.fromJson(item as Map<String, dynamic>),
+        )
+        .toList();
   }
 
   Future<List<MarketProduct>> getMarketProducts() async {
-    final response = await _request('/market/products', authenticated: false) as List<dynamic>;
-    return response.map((item) => MarketProduct.fromJson(item as Map<String, dynamic>)).toList();
+    final response =
+        await _request('/market/products', authenticated: false)
+            as List<dynamic>;
+    return response
+        .map((item) => MarketProduct.fromJson(item as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<List<MarketProduct>> searchMarketProducts(String query) async {
+    final response =
+        await _request(
+              '/market/search?query=${Uri.encodeQueryComponent(query)}',
+              authenticated: false,
+            )
+            as List<dynamic>;
+    return response
+        .map((item) => MarketProduct.fromJson(item as Map<String, dynamic>))
+        .toList();
   }
 
   Future<List<MarketProduct>> getAlternatives(String activeSubstance) async {
-    final response = await _request(
-      '/market/alternatives?activeSubstance=${Uri.encodeQueryComponent(activeSubstance)}',
-      authenticated: false,
-    ) as List<dynamic>;
-    return response.map((item) => MarketProduct.fromJson(item as Map<String, dynamic>)).toList();
+    final response =
+        await _request(
+              '/market/alternatives?activeSubstance=${Uri.encodeQueryComponent(activeSubstance)}',
+              authenticated: false,
+            )
+            as List<dynamic>;
+    return response
+        .map((item) => MarketProduct.fromJson(item as Map<String, dynamic>))
+        .toList();
   }
 
   Future<void> addToCart(String productId) async {
@@ -94,9 +134,33 @@ class ApiService {
     );
   }
 
+  Future<List<CartItem>> getCart() async {
+    final response = await _request('/market/cart') as List<dynamic>;
+    return response
+        .map((item) => CartItem.fromJson(item as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<void> updateCartItemQuantity(String cartItemId, int quantity) async {
+    await _request(
+      '/market/cart/$cartItemId',
+      method: 'PATCH',
+      body: {'quantity': quantity},
+    );
+  }
+
+  Future<void> removeCartItem(String cartItemId) async {
+    await _request('/market/cart/$cartItemId', method: 'DELETE');
+  }
+
   Future<List<MedicationScheduleItem>> getMySchedule() async {
     final response = await _request('/schedule/my') as List<dynamic>;
-    return response.map((item) => MedicationScheduleItem.fromJson(item as Map<String, dynamic>)).toList();
+    return response
+        .map(
+          (item) =>
+              MedicationScheduleItem.fromJson(item as Map<String, dynamic>),
+        )
+        .toList();
   }
 
   Future<void> markScheduleTaken(String id) async {
@@ -129,6 +193,9 @@ class ApiService {
       case 'PATCH':
         response = await http.patch(uri, headers: headers, body: requestBody);
         break;
+      case 'DELETE':
+        response = await http.delete(uri, headers: headers);
+        break;
       default:
         response = await http.get(uri, headers: headers);
     }
@@ -137,9 +204,10 @@ class ApiService {
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       final error = decoded is Map<String, dynamic> ? decoded['error'] : null;
-      final message = error is Map<String, dynamic>
-          ? error['message']?.toString() ?? 'API request failed'
-          : 'API request failed';
+      final message =
+          error is Map<String, dynamic>
+              ? error['message']?.toString() ?? 'API request failed'
+              : 'API request failed';
       throw Exception(message);
     }
 

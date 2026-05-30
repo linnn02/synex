@@ -156,9 +156,13 @@ class Prescription {
   final List<PrescriptionMedicine> medicines;
 
   factory Prescription.fromJson(Map<String, dynamic> json) {
-    final medicines = (json['medicines'] as List<dynamic>? ?? [])
-        .map((item) => PrescriptionMedicine.fromJson(item as Map<String, dynamic>))
-        .toList();
+    final medicines =
+        (json['medicines'] as List<dynamic>? ?? [])
+            .map(
+              (item) =>
+                  PrescriptionMedicine.fromJson(item as Map<String, dynamic>),
+            )
+            .toList();
 
     return Prescription(
       id: json['id'] as String,
@@ -214,6 +218,70 @@ class MarketProduct {
   }
 }
 
+extension MarketProductView on MarketProduct {
+  String get category {
+    final normalized =
+        '${title.toLowerCase()} $activeSubstance ${form.toLowerCase()}';
+
+    if (normalized.contains('amoxicillin') ||
+        normalized.contains('azithromycin') ||
+        normalized.contains('амоксициллин') ||
+        normalized.contains('азитромицин')) {
+      return 'Антибиотики';
+    }
+
+    if (normalized.contains('ibuprofen') ||
+        normalized.contains('paracetamol') ||
+        normalized.contains('ибупрофен') ||
+        normalized.contains('парацетамол')) {
+      return 'Температура и боль';
+    }
+
+    if (normalized.contains('loratadine') ||
+        normalized.contains('cetirizine') ||
+        normalized.contains('лоратадин') ||
+        normalized.contains('цетиризин')) {
+      return 'Аллергия';
+    }
+
+    if (normalized.contains('спрей') || normalized.contains('горла')) {
+      return 'Горло';
+    }
+
+    if (normalized.contains('vitamin') || normalized.contains('витамин')) {
+      return 'Витамины';
+    }
+
+    return 'Другое';
+  }
+
+  bool get isInStock => stock > 0;
+
+  String get priceText => '${price.toStringAsFixed(0)} ₸';
+}
+
+class CartItem {
+  const CartItem({
+    required this.id,
+    required this.quantity,
+    required this.product,
+  });
+
+  final String id;
+  final int quantity;
+  final MarketProduct product;
+
+  num get lineTotal => product.price * quantity;
+
+  factory CartItem.fromJson(Map<String, dynamic> json) {
+    return CartItem(
+      id: json['id'] as String,
+      quantity: json['quantity'] as int,
+      product: MarketProduct.fromJson(json['product'] as Map<String, dynamic>),
+    );
+  }
+}
+
 class MedicineProductGroup {
   const MedicineProductGroup({
     required this.prescriptionMedicine,
@@ -224,9 +292,14 @@ class MedicineProductGroup {
   final List<MarketProduct> products;
 
   factory MedicineProductGroup.fromJson(Map<String, dynamic> json) {
-    final products = (json['products'] as List<dynamic>? ?? [])
-        .map((item) => MarketProduct.fromJson(item['product'] as Map<String, dynamic>))
-        .toList();
+    final products =
+        (json['products'] as List<dynamic>? ?? [])
+            .map(
+              (item) => MarketProduct.fromJson(
+                item['product'] as Map<String, dynamic>,
+              ),
+            )
+            .toList();
 
     return MedicineProductGroup(
       prescriptionMedicine: PrescriptionMedicine.fromJson(
@@ -261,4 +334,3 @@ class MedicationScheduleItem {
     );
   }
 }
-
