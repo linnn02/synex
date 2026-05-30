@@ -1,0 +1,39 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: halyk-health-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: halyk_health
+    ports:
+      - "5433:5432"
+    volumes:
+      - halyk_health_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d halyk_health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+    container_name: halyk-health-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/halyk_health?schema=public
+      JWT_SECRET: local-dev-secret
+      PORT: 4000
+      QWEN_API_KEY:
+      QWEN_API_URL:
+    ports:
+      - "4000:4000"
+    command: sh -c "npx prisma db push && npx prisma db seed && npm run start"
+
+volumes:
+  halyk_health_pgdata:

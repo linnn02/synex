@@ -1,0 +1,204 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  PATIENT
+  DOCTOR
+  ADMIN
+}
+
+enum AppointmentStatus {
+  PENDING
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+}
+
+enum PrescriptionStatus {
+  DRAFT
+  SENT
+  ACTIVE
+  COMPLETED
+}
+
+enum ScheduleStatus {
+  PLANNED
+  TAKEN
+  MISSED
+}
+
+enum MatchType {
+  EXACT
+  ACTIVE_SUBSTANCE
+  ALTERNATIVE
+}
+
+model User {
+  id           String    @id @default(uuid())
+  fullName     String
+  phone        String    @unique
+  email        String    @unique
+  passwordHash String
+  role         UserRole
+  birthDate    DateTime?
+  address      String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  doctorProfile      DoctorProfile?
+  patientAppointments Appointment[] @relation("PatientAppointments")
+  doctorAppointments  Appointment[] @relation("DoctorAppointments")
+  patientPrescriptions Prescription[] @relation("PatientPrescriptions")
+  doctorPrescriptions  Prescription[] @relation("DoctorPrescriptions")
+  medicationSchedules  MedicationSchedule[] @relation("PatientMedicationSchedules")
+  cartItems            CartItem[] @relation("PatientCartItems")
+}
+
+model Clinic {
+  id        String   @id @default(uuid())
+  name      String
+  city      String
+  address   String
+  bin       String?
+  phone     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  doctors      DoctorProfile[]
+  appointments Appointment[]
+}
+
+model DoctorProfile {
+  id             String   @id @default(uuid())
+  userId         String   @unique
+  clinicId       String
+  specialization String
+  roomNumber     String?
+  scheduleText   String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clinic Clinic @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+}
+
+model Appointment {
+  id              String            @id @default(uuid())
+  patientId       String
+  doctorId        String
+  clinicId        String
+  appointmentDate DateTime
+  complaint       String
+  status          AppointmentStatus @default(PENDING)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  patient      User          @relation("PatientAppointments", fields: [patientId], references: [id], onDelete: Cascade)
+  doctor       User          @relation("DoctorAppointments", fields: [doctorId], references: [id], onDelete: Cascade)
+  clinic       Clinic        @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  prescription Prescription?
+}
+
+model Prescription {
+  id            String             @id @default(uuid())
+  appointmentId String             @unique
+  patientId     String
+  doctorId      String
+  diagnosis     String
+  rawText       String
+  doctorComment String?
+  aiSummary     String?
+  aiDisclaimer  String?
+  status        PrescriptionStatus @default(SENT)
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  appointment Appointment            @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  patient     User                   @relation("PatientPrescriptions", fields: [patientId], references: [id], onDelete: Cascade)
+  doctor      User                   @relation("DoctorPrescriptions", fields: [doctorId], references: [id], onDelete: Cascade)
+  medicines   PrescriptionMedicine[]
+}
+
+model PrescriptionMedicine {
+  id              String   @id @default(uuid())
+  prescriptionId  String
+  medicineName    String
+  dosage          String
+  frequency       String
+  duration        String
+  instruction     String
+  quantityNeeded  Int
+  activeSubstance String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  prescription Prescription          @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
+  matches      MedicineMatch[]
+  schedules    MedicationSchedule[]
+}
+
+model MarketProduct {
+  id              String   @id @default(uuid())
+  title           String
+  activeSubstance String
+  dosage          String
+  form            String
+  manufacturer    String
+  price           Float
+  stock           Int
+  pharmacyName    String
+  productUrl      String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  matches   MedicineMatch[]
+  cartItems CartItem[]
+}
+
+model MedicineMatch {
+  id                     String    @id @default(uuid())
+  prescriptionMedicineId String
+  productId              String
+  matchType              MatchType
+  confidenceScore        Float
+  isAlternative          Boolean   @default(false)
+  createdAt              DateTime  @default(now())
+
+  prescriptionMedicine PrescriptionMedicine @relation(fields: [prescriptionMedicineId], references: [id], onDelete: Cascade)
+  product              MarketProduct        @relation(fields: [productId], references: [id], onDelete: Cascade)
+}
+
+model MedicationSchedule {
+  id                     String         @id @default(uuid())
+  patientId              String
+  prescriptionMedicineId String
+  takeTime               DateTime
+  status                 ScheduleStatus @default(PLANNED)
+  takenAt                DateTime?
+  createdAt              DateTime       @default(now())
+  updatedAt              DateTime       @updatedAt
+
+  patient              User                 @relation("PatientMedicationSchedules", fields: [patientId], references: [id], onDelete: Cascade)
+  prescriptionMedicine PrescriptionMedicine @relation(fields: [prescriptionMedicineId], references: [id], onDelete: Cascade)
+}
+
+model CartItem {
+  id        String   @id @default(uuid())
+  patientId String
+  productId String
+  quantity  Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  patient User          @relation("PatientCartItems", fields: [patientId], references: [id], onDelete: Cascade)
+  product MarketProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([patientId, productId])
+}
+
