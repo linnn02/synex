@@ -35,8 +35,10 @@ class ApiService {
         .toList();
   }
 
-  Future<Map<String, dynamic>> getPatientAppointmentContext(String profileId) async {
-    final response = await _request('/patient-profiles/$profileId/appointment-context');
+  Future<Map<String, dynamic>> getPatientAppointmentContext(
+      String profileId) async {
+    final response =
+        await _request('/patient-profiles/$profileId/appointment-context');
     return response as Map<String, dynamic>;
   }
 
@@ -78,7 +80,8 @@ class ApiService {
     return Appointment.fromJson(response as Map<String, dynamic>);
   }
 
-  Future<List<Appointment>> getMyAppointments({String? patientProfileId}) async {
+  Future<List<Appointment>> getMyAppointments(
+      {String? patientProfileId}) async {
     String path = '/appointments/my';
     if (patientProfileId != null) {
       path += '?patientProfileId=$patientProfileId';
@@ -104,7 +107,8 @@ class ApiService {
     return Appointment.fromJson(response as Map<String, dynamic>);
   }
 
-  Future<List<Prescription>> getMyPrescriptions({String? patientProfileId}) async {
+  Future<List<Prescription>> getMyPrescriptions(
+      {String? patientProfileId}) async {
     String path = '/prescriptions/my';
     if (patientProfileId != null) {
       path += '?patientProfileId=$patientProfileId';
@@ -153,8 +157,8 @@ class ApiService {
   Future<List<MedicationScheduleItem>> getPrescriptionSchedule(
     String prescriptionId,
   ) async {
-    final response =
-        await _request('/prescriptions/$prescriptionId/schedule') as List<dynamic>;
+    final response = await _request('/prescriptions/$prescriptionId/schedule')
+        as List<dynamic>;
     return response
         .map(
           (item) =>
@@ -210,13 +214,17 @@ class ApiService {
         .toList();
   }
 
-  Future<void> addToCart(String productId, {String? patientProfileId}) async {
+  Future<void> addToCart(
+    String productId, {
+    String? patientProfileId,
+    int quantity = 1,
+  }) async {
     await _request(
       '/market/cart',
       method: 'POST',
       body: {
         'productId': productId,
-        'quantity': 1,
+        'quantity': quantity,
         if (patientProfileId != null) 'patientProfileId': patientProfileId,
       },
     );
@@ -241,7 +249,8 @@ class ApiService {
     await _request('/market/cart/$cartItemId', method: 'DELETE');
   }
 
-  Future<List<MedicationScheduleItem>> getMySchedule({String? patientProfileId}) async {
+  Future<List<MedicationScheduleItem>> getMySchedule(
+      {String? patientProfileId}) async {
     String path = '/schedule/my';
     if (patientProfileId != null) {
       path += '?patientProfileId=$patientProfileId';

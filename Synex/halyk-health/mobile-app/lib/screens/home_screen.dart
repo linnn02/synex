@@ -1,22 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../models/api_models.dart';
 import '../services/api_service.dart';
-import 'create_appointment_screen.dart';
-import 'market_products_screen.dart';
-import 'medication_schedule_screen.dart';
-import 'my_appointments_screen.dart';
-import 'my_prescriptions_screen.dart';
-import 'prescription_detail_screen.dart';
-import 'family_screen.dart';
 
-const _halykGreen = Color(0xFF007F5F);
-const _halykDark = Color(0xFF073E35);
-const _halykGold = Color(0xFFF2B705);
-const _softGreen = Color(0xFFEAF7F2);
-const _surfaceBg = Color(0xFFF4F7F8);
-const _textMuted = Color(0xFF64747D);
+const _halykGreen = Color(0xFF20A957);
+const _halykDark = Color(0xFF111827);
+const _surfaceBg = Color(0xFFF5F6F8);
+const _muted = Color(0xFF6B7280);
+const _border = Color(0xFFE5E7EB);
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({
@@ -33,134 +24,7 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  int _index = 0;
-  int _refreshKey = 0;
-
-  Future<void> _openAppointmentFlow() async {
-    final created = await Navigator.push<bool>(
-      context,
-      MaterialPageRoute(
-        builder: (_) => CreateAppointmentScreen(
-          apiService: widget.apiService,
-          currentUser: widget.user,
-        ),
-      ),
-    );
-    if (mounted && created == true) {
-      setState(() {
-        _refreshKey++;
-        _index = 1;
-      });
-    }
-  }
-
-  void _openFamily() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => FamilyScreen(apiService: widget.apiService),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final pages = [
-      _HomeOverview(
-        key: ValueKey(_refreshKey),
-        apiService: widget.apiService,
-        user: widget.user,
-        onBook: _openAppointmentFlow,
-        onOpenFamily: _openFamily,
-        onOpenAppointments: () => setState(() => _index = 1),
-        onOpenPrescriptions: () => setState(() => _index = 2),
-        onOpenMarket: () => setState(() => _index = 3),
-        onOpenSchedule: () => setState(() => _index = 4),
-      ),
-      MyAppointmentsScreen(
-        key: ValueKey('appointments_$_refreshKey'),
-        apiService: widget.apiService,
-      ),
-      MyPrescriptionsScreen(
-        key: ValueKey('prescriptions_$_refreshKey'),
-        apiService: widget.apiService,
-      ),
-      MarketProductsScreen(apiService: widget.apiService),
-      MedicationScheduleScreen(
-        key: ValueKey('schedule_$_refreshKey'),
-        apiService: widget.apiService,
-      ),
-    ];
-
-    return Scaffold(
-      backgroundColor: _surfaceBg,
-      body: IndexedStack(index: _index, children: pages),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _index,
-        height: 68,
-        backgroundColor: Colors.white,
-        indicatorColor: _softGreen,
-        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-        onDestinationSelected: (value) => setState(() => _index = value),
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.home_outlined),
-            selectedIcon: Icon(Icons.home),
-            label: 'Главная',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.calendar_month_outlined),
-            selectedIcon: Icon(Icons.calendar_month),
-            label: 'Записи',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.assignment_outlined),
-            selectedIcon: Icon(Icons.assignment),
-            label: 'Назначения',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.local_pharmacy_outlined),
-            selectedIcon: Icon(Icons.local_pharmacy),
-            label: 'Аптека',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.alarm_outlined),
-            selectedIcon: Icon(Icons.alarm),
-            label: 'График',
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _HomeOverview extends StatefulWidget {
-  const _HomeOverview({
-    required this.apiService,
-    required this.user,
-    required this.onBook,
-    required this.onOpenFamily,
-    required this.onOpenAppointments,
-    required this.onOpenPrescriptions,
-    required this.onOpenMarket,
-    required this.onOpenSchedule,
-  });
-
-  final ApiService apiService;
-  final AppUser user;
-  final VoidCallback onBook;
-  final VoidCallback onOpenFamily;
-  final VoidCallback onOpenAppointments;
-  final VoidCallback onOpenPrescriptions;
-  final VoidCallback onOpenMarket;
-  final VoidCallback onOpenSchedule;
-
-  @override
-  State<_HomeOverview> createState() => _HomeOverviewState();
-}
-
-class _HomeOverviewState extends State<_HomeOverview> {
-  late Future<_HomeSnapshot> _future;
+  late Future<_HomePrescriptionState> _future;
 
   @override
   void initState() {
@@ -168,171 +32,1098 @@ class _HomeOverviewState extends State<_HomeOverview> {
     _future = _load();
   }
 
-  Future<_HomeSnapshot> _load() async {
-    final appointmentsFuture = widget.apiService
-        .getMyAppointments()
-        .catchError((_) => <Appointment>[]);
-    final prescriptionsFuture = widget.apiService
-        .getMyPrescriptions()
-        .catchError((_) => <Prescription>[]);
-    final scheduleFuture =
-        widget.apiService.getMySchedule().catchError((_) => <MedicationScheduleItem>[]);
+  Future<_HomePrescriptionState> _load() async {
+    final prescriptions = await widget.apiService.getMyPrescriptions();
+    final selected = prescriptions.isEmpty
+        ? null
+        : prescriptions.firstWhere(
+            (item) => item.medicines.isNotEmpty || item.aiSummary != null,
+            orElse: () => prescriptions.first,
+          );
 
-    return _HomeSnapshot(
-      appointments: await appointmentsFuture,
-      prescriptions: await prescriptionsFuture,
-      schedule: await scheduleFuture,
+    return _HomePrescriptionState(prescription: selected);
+  }
+
+  Future<void> _openPrescription(Prescription prescription) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PrescriptionJourneyScreen(
+          apiService: widget.apiService,
+          initialPrescription: prescription,
+        ),
+      ),
+    );
+
+    if (mounted) {
+      setState(() => _future = _load());
+    }
+  }
+
+  void _showStub(String title) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+          content: Text('$title: раздел не входит в текущий MVP-сценарий')),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    return RefreshIndicator(
-      onRefresh: () async {
-        setState(() => _future = _load());
-        await _future;
-      },
-      color: _halykGreen,
-      child: FutureBuilder<_HomeSnapshot>(
-        future: _future,
-        builder: (context, snapshot) {
-          final data = snapshot.data ?? const _HomeSnapshot();
-          final nextAppointment = data.nextAppointment;
-          final latestPrescription = data.latestPrescription;
-          final nextSchedule = data.nextScheduleItem;
+    return Scaffold(
+      backgroundColor: _surfaceBg,
+      body: SafeArea(
+        bottom: false,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final contentWidth =
+                constraints.maxWidth > 430 ? 430.0 : constraints.maxWidth;
 
-          return CustomScrollView(
-            slivers: [
-              SliverToBoxAdapter(
-                child: _HeroHeader(
-                  user: widget.user,
-                  nextAppointment: nextAppointment,
-                  onBook: widget.onBook,
+            return Align(
+              alignment: Alignment.topCenter,
+              child: SizedBox(
+                width: contentWidth,
+                height: constraints.maxHeight,
+                child: FutureBuilder<_HomePrescriptionState>(
+                  future: _future,
+                  builder: (context, snapshot) {
+                    final prescription = snapshot.data?.prescription;
+
+                    return RefreshIndicator(
+                      color: _halykGreen,
+                      onRefresh: () async {
+                        setState(() => _future = _load());
+                        await _future;
+                      },
+                      child: ListView(
+                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 120),
+                        children: [
+                          _HalykTopBar(user: widget.user),
+                          const SizedBox(height: 16),
+                          _PromoStrip(onTap: () => _showStub('Маркет')),
+                          const SizedBox(height: 14),
+                          _CoreServicesGrid(onService: _showStub),
+                          const SizedBox(height: 16),
+                          _PrescriptionNotificationCard(
+                            loading: !snapshot.hasData,
+                            prescription: prescription,
+                            onOpen: prescription == null
+                                ? null
+                                : () => _openPrescription(prescription),
+                          ),
+                          const SizedBox(height: 16),
+                          _AllServicesRow(onService: _showStub),
+                          const SizedBox(height: 16),
+                          _MarketSwitch(onService: _showStub),
+                        ],
+                      ),
+                    );
+                  },
                 ),
               ),
-              SliverPadding(
-                padding: const EdgeInsets.fromLTRB(16, 14, 16, 28),
-                sliver: SliverList.list(
-                  children: [
-                    _QuickActions(
-                      onBook: widget.onBook,
-                      onOpenFamily: widget.onOpenFamily,
-                      onOpenAppointments: widget.onOpenAppointments,
-                      onOpenPrescriptions: widget.onOpenPrescriptions,
-                      onOpenMarket: widget.onOpenMarket,
-                    ),
-                    const SizedBox(height: 16),
-                    _SectionTitle(
-                      title: 'Персонально для вас',
-                      action: 'Обновить',
-                      onAction: () => setState(() => _future = _load()),
-                    ),
-                    const SizedBox(height: 10),
-                    _OfferCarousel(
-                      prescription: latestPrescription,
-                      nextSchedule: nextSchedule,
-                      onOpenMarket: widget.onOpenMarket,
-                      onOpenSchedule: widget.onOpenSchedule,
-                    ),
-                    const SizedBox(height: 18),
-                    _SectionTitle(
-                      title: 'Ваше здоровье',
-                      action: 'Все записи',
-                      onAction: widget.onOpenAppointments,
-                    ),
-                    const SizedBox(height: 10),
-                    if (nextAppointment == null)
-                      _EmptyHealthCard(onBook: widget.onBook)
-                    else
-                      _AppointmentPreview(appointment: nextAppointment),
-                    const SizedBox(height: 14),
-                    if (latestPrescription != null)
-                      _PrescriptionPreview(
-                        prescription: latestPrescription,
-                        apiService: widget.apiService,
-                      )
-                    else
-                      _InfoBanner(
-                        icon: Icons.auto_awesome_outlined,
-                        title: 'AI объяснит назначение',
-                        text:
-                            'После визита врач отправит назначение, а AI покажет понятное резюме и лекарства в аптеке.',
-                      ),
-                    const SizedBox(height: 14),
-                    _InfoBanner(
-                      icon: Icons.shield_outlined,
-                      title: 'Медицинская безопасность',
-                      text:
-                          'ИИ-агент не заменяет врача. Перед заменой препарата проконсультируйтесь с врачом или фармацевтом.',
-                    ),
-                  ],
-                ),
+            );
+          },
+        ),
+      ),
+      bottomNavigationBar: SizedBox(
+        height: 92,
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 430),
+            child: _HalykBottomBar(onTap: _showStub),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _HomePrescriptionState {
+  const _HomePrescriptionState({required this.prescription});
+
+  final Prescription? prescription;
+}
+
+class _HalykTopBar extends StatelessWidget {
+  const _HalykTopBar({required this.user});
+
+  final AppUser user;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        _CircleButton(label: 'AШ', onTap: () {}),
+        const SizedBox(width: 12),
+        const Expanded(
+          child: _SearchPill(),
+        ),
+        const SizedBox(width: 12),
+        Container(
+          height: 44,
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(18),
+          ),
+          child: const Row(
+            children: [
+              Icon(Icons.eco, color: _halykGreen),
+              SizedBox(width: 8),
+              Text(
+                '26.51',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
               ),
             ],
+          ),
+        ),
+        const SizedBox(width: 10),
+        Stack(
+          clipBehavior: Clip.none,
+          children: [
+            IconButton(
+              onPressed: () {},
+              icon: const Icon(Icons.chat_bubble_outline, color: _halykGreen),
+            ),
+            Positioned(
+              right: 0,
+              top: -3,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.red,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Text(
+                  '1',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _SearchPill extends StatelessWidget {
+  const _SearchPill();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 44,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFEDEFF4),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: const Row(
+        children: [
+          Icon(Icons.search, color: Color(0xFF98A2B3)),
+          SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              'Поиск',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: Color(0xFF98A2B3),
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CircleButton extends StatelessWidget {
+  const _CircleButton({required this.label, required this.onTap});
+
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(22),
+      child: Container(
+        width: 44,
+        height: 44,
+        decoration: const BoxDecoration(
+          color: Color(0xFFEDEFF4),
+          shape: BoxShape.circle,
+        ),
+        child: Center(
+          child: Text(
+            label,
+            style: const TextStyle(
+              color: _halykDark,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PromoStrip extends StatelessWidget {
+  const _PromoStrip({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 150,
+      child: ListView(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        scrollDirection: Axis.horizontal,
+        children: [
+          _PromoCard(
+            width: 330,
+            color: const Color(0xFF233B35),
+            title: 'Halyk Health',
+            subtitle: 'Назначение врача, AI-выжимка и Appteka в одном сценарии',
+            icon: Icons.local_hospital,
+            onTap: onTap,
+          ),
+          const SizedBox(width: 12),
+          _PromoCard(
+            width: 190,
+            color: const Color(0xFF7C5CFF),
+            title: '+10%',
+            subtitle: 'Бонусы на аптечный заказ',
+            icon: Icons.shopping_cart_outlined,
+            onTap: onTap,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PromoCard extends StatelessWidget {
+  const _PromoCard({
+    required this.width,
+    required this.color,
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.onTap,
+  });
+
+  final double width;
+  final Color color;
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(22),
+      child: Container(
+        width: width,
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(22),
+        ),
+        child: Stack(
+          children: [
+            Positioned(
+              right: -14,
+              bottom: -20,
+              child: Icon(
+                icon,
+                size: 118,
+                color: Colors.white.withValues(alpha: 0.18),
+              ),
+            ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 24,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const Spacer(),
+                Text(
+                  subtitle,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12.5,
+                    height: 1.25,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CoreServicesGrid extends StatelessWidget {
+  const _CoreServicesGrid({required this.onService});
+
+  final ValueChanged<String> onService;
+
+  @override
+  Widget build(BuildContext context) {
+    final items = [
+      (Icons.credit_card, 'Карты'),
+      (Icons.savings_outlined, 'Депозиты'),
+      (Icons.payments_outlined, 'Кредиты'),
+      (Icons.shopping_bag_outlined, 'Рассрочка'),
+      (Icons.storefront_outlined, 'Маркет'),
+      (Icons.flight_takeoff, 'Travel'),
+      (Icons.shield_outlined, 'Страховка'),
+      (Icons.grid_view_rounded, 'QR'),
+      (Icons.eco_outlined, 'Halyk+'),
+      (Icons.account_balance_outlined, 'Госуслуги'),
+      (Icons.show_chart, 'Invest'),
+      (Icons.local_pharmacy_outlined, 'Appteka'),
+    ];
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 20, 12, 18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: Wrap(
+        runSpacing: 10,
+        children: items.map((item) {
+          return SizedBox(
+            width: (MediaQuery.sizeOf(context).width.clamp(0, 430) - 56) / 4,
+            child: _ServiceIcon(
+              icon: item.$1,
+              label: item.$2,
+              onTap: () => onService(item.$2),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+}
+
+class _ServiceIcon extends StatelessWidget {
+  const _ServiceIcon({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, color: _halykGreen, size: 34),
+          const SizedBox(height: 8),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: _halykDark,
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PrescriptionNotificationCard extends StatelessWidget {
+  const _PrescriptionNotificationCard({
+    required this.loading,
+    required this.prescription,
+    required this.onOpen,
+  });
+
+  final bool loading;
+  final Prescription? prescription;
+  final VoidCallback? onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final hasPrescription = prescription != null;
+
+    return InkWell(
+      onTap: onOpen,
+      borderRadius: BorderRadius.circular(24),
+      child: Container(
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: hasPrescription ? const Color(0xFF102B23) : Colors.white,
+          borderRadius: BorderRadius.circular(24),
+          border:
+              Border.all(color: hasPrescription ? Colors.transparent : _border),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 50,
+              height: 50,
+              decoration: BoxDecoration(
+                color: hasPrescription
+                    ? Colors.white.withValues(alpha: 0.12)
+                    : const Color(0xFFE8F7EF),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Icon(
+                Icons.notifications_active_outlined,
+                color: hasPrescription ? Colors.white : _halykGreen,
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    loading
+                        ? 'Проверяем назначения'
+                        : hasPrescription
+                            ? 'Вам выписали назначение'
+                            : 'Новых назначений нет',
+                    style: TextStyle(
+                      color: hasPrescription ? Colors.white : _halykDark,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    hasPrescription
+                        ? '${prescription!.diagnosis}. Откройте назначение врача, AI-выжимку и готовую корзину Appteka.'
+                        : 'Когда поликлиника отправит назначение, оно появится здесь как банковское уведомление.',
+                    style: TextStyle(
+                      color: hasPrescription
+                          ? Colors.white.withValues(alpha: 0.78)
+                          : _muted,
+                      height: 1.35,
+                    ),
+                  ),
+                  if (hasPrescription) ...[
+                    const SizedBox(height: 12),
+                    Wrap(
+                      runSpacing: 8,
+                      spacing: 8,
+                      children: [
+                        const _LightBadge(text: 'Поликлиника'),
+                        _LightBadge(
+                            text:
+                                '${prescription!.medicines.length} препарата'),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            Icon(
+              Icons.chevron_right,
+              color: hasPrescription ? Colors.white : _muted,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _LightBadge extends StatelessWidget {
+  const _LightBadge({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        text,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 12,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    );
+  }
+}
+
+class _AllServicesRow extends StatelessWidget {
+  const _AllServicesRow({required this.onService});
+
+  final ValueChanged<String> onService;
+
+  @override
+  Widget build(BuildContext context) {
+    final services = [
+      (const Color(0xFF62BD3D), 'Airba fresh', 'fresh'),
+      (const Color(0xFFB9FF00), 'inDrive', 'iD'),
+      (_halykGreen, 'Appteka', '+'),
+      (const Color(0xFFE7F4EA), 'Рестораны', 'NEW'),
+    ];
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Все сервисы',
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w900,
+                    color: _halykDark,
+                  ),
+                ),
+              ),
+              IconButton(
+                onPressed: () => onService('Все сервисы'),
+                icon: const Icon(Icons.chevron_right, size: 30),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          SizedBox(
+            height: 104,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: services.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 16),
+              itemBuilder: (context, index) {
+                final service = services[index];
+                return _MiniService(
+                  color: service.$1,
+                  title: service.$2,
+                  mark: service.$3,
+                  onTap: () => onService(service.$2),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MiniService extends StatelessWidget {
+  const _MiniService({
+    required this.color,
+    required this.title,
+    required this.mark,
+    required this.onTap,
+  });
+
+  final Color color;
+  final String title;
+  final String mark;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(20),
+      child: SizedBox(
+        width: 92,
+        child: Column(
+          children: [
+            Container(
+              width: 82,
+              height: 58,
+              decoration: BoxDecoration(
+                color: color,
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: Center(
+                child: Text(
+                  mark,
+                  style: TextStyle(
+                    color: color.computeLuminance() > 0.5
+                        ? _halykDark
+                        : Colors.white,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: _halykDark,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MarketSwitch extends StatelessWidget {
+  const _MarketSwitch({required this.onService});
+
+  final ValueChanged<String> onService;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 58,
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: const Color(0xFFE8EAEE),
+        borderRadius: BorderRadius.circular(22),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: FilledButton.icon(
+              onPressed: () => onService('Market'),
+              icon: const Icon(Icons.shopping_cart_outlined),
+              label: const Text('Market'),
+              style: FilledButton.styleFrom(
+                backgroundColor: Colors.white,
+                foregroundColor: _halykDark,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(18),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: TextButton.icon(
+              onPressed: () => onService('Kino.kz'),
+              icon: const Icon(Icons.movie_outlined, color: _halykDark),
+              label: const Text('Kino.kz'),
+              style: TextButton.styleFrom(foregroundColor: _halykDark),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HalykBottomBar extends StatelessWidget {
+  const _HalykBottomBar({required this.onTap});
+
+  final ValueChanged<String> onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(10, 8, 10, 18),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(top: BorderSide(color: _border)),
+      ),
+      child: Row(
+        children: [
+          _NavItem(
+              icon: Icons.home, label: 'Главная', active: true, onTap: () {}),
+          _NavItem(
+              icon: Icons.account_balance_wallet_outlined,
+              label: 'Мой банк',
+              onTap: () => onTap('Мой банк')),
+          Expanded(
+            child: Center(
+              child: InkWell(
+                onTap: () => onTap('QR'),
+                borderRadius: BorderRadius.circular(32),
+                child: Container(
+                  width: 64,
+                  height: 64,
+                  decoration: const BoxDecoration(
+                    color: _halykGreen,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.qr_code_scanner,
+                      color: Colors.white, size: 32),
+                ),
+              ),
+            ),
+          ),
+          _NavItem(
+              icon: Icons.swap_horiz,
+              label: 'Переводы',
+              onTap: () => onTap('Переводы')),
+          _NavItem(
+              icon: Icons.receipt_long_outlined,
+              label: 'Платежи',
+              onTap: () => onTap('Платежи')),
+        ],
+      ),
+    );
+  }
+}
+
+class _NavItem extends StatelessWidget {
+  const _NavItem({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.active = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: active ? _halykGreen : const Color(0xFF5B6068)),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: active ? _halykGreen : _halykDark,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class PrescriptionJourneyScreen extends StatefulWidget {
+  const PrescriptionJourneyScreen({
+    super.key,
+    required this.apiService,
+    required this.initialPrescription,
+  });
+
+  final ApiService apiService;
+  final Prescription initialPrescription;
+
+  @override
+  State<PrescriptionJourneyScreen> createState() =>
+      _PrescriptionJourneyScreenState();
+}
+
+class _PrescriptionJourneyScreenState extends State<PrescriptionJourneyScreen> {
+  late Future<_PrescriptionJourneyData> _future;
+  bool _buying = false;
+  bool _remindersEnabled = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = _load();
+  }
+
+  Future<_PrescriptionJourneyData> _load() async {
+    var prescription = widget.initialPrescription;
+
+    if (prescription.aiSummary == null || prescription.medicines.isEmpty) {
+      prescription =
+          await widget.apiService.analyzePrescription(prescription.id);
+    }
+
+    final groups =
+        await widget.apiService.getPrescriptionMarketProducts(prescription.id);
+    final schedule = await widget.apiService
+        .getPrescriptionSchedule(prescription.id)
+        .catchError((_) => <MedicationScheduleItem>[]);
+
+    final cartLines = <ApptekaDraftLine>[];
+    for (final medicine in prescription.medicines) {
+      final matchingGroup = groups.where(
+        (group) => group.prescriptionMedicine.id == medicine.id,
+      );
+      final products = matchingGroup.isEmpty
+          ? <MarketProduct>[]
+          : matchingGroup.first.products;
+      if (products.isNotEmpty) {
+        cartLines.add(
+          ApptekaDraftLine(
+            medicine: medicine,
+            product: products.first,
+            quantity: medicine.quantityNeeded < 1 ? 1 : medicine.quantityNeeded,
+          ),
+        );
+      }
+    }
+
+    return _PrescriptionJourneyData(
+      prescription: prescription,
+      groups: groups,
+      schedule: schedule,
+      cartLines: cartLines,
+    );
+  }
+
+  Future<void> _buy(_PrescriptionJourneyData data) async {
+    final selected = data.cartLines.where((line) => line.selected).toList();
+    if (selected.isEmpty || _buying) return;
+
+    setState(() => _buying = true);
+    try {
+      for (final line in selected) {
+        await widget.apiService.addToCart(
+          line.product.id,
+          patientProfileId: data.prescription.patientProfile?.id,
+          quantity: line.quantity,
+        );
+      }
+      if (!mounted) return;
+      await _showReminderDialog(data);
+    } finally {
+      if (mounted) {
+        setState(() => _buying = false);
+      }
+    }
+  }
+
+  Future<void> _showReminderDialog(_PrescriptionJourneyData data) async {
+    final enabled = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Напоминания о приеме'),
+        content: Text(
+          'Хотели бы вы получать уведомления о приеме лекарств по времени на основе назначения? '
+          'Мы подготовили ${data.schedule.length} напоминаний.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Не сейчас'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Включить'),
+          ),
+        ],
+      ),
+    );
+
+    if (!mounted) return;
+    setState(() => _remindersEnabled = enabled == true);
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          enabled == true
+              ? 'Заказ передан в Appteka. Напоминания включены.'
+              : 'Заказ передан в Appteka. Напоминания можно включить позже.',
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: _surfaceBg,
+      appBar: AppBar(
+        title: const Text('Назначение врача'),
+        backgroundColor: _surfaceBg,
+        foregroundColor: _halykDark,
+      ),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final contentWidth =
+              constraints.maxWidth > 430 ? 430.0 : constraints.maxWidth;
+
+          return Align(
+            alignment: Alignment.topCenter,
+            child: SizedBox(
+              width: contentWidth,
+              height: constraints.maxHeight,
+              child: FutureBuilder<_PrescriptionJourneyData>(
+                future: _future,
+                builder: (context, snapshot) {
+                  if (!snapshot.hasData) {
+                    return const Center(
+                        child: CircularProgressIndicator(color: _halykGreen));
+                  }
+
+                  final data = snapshot.data!;
+                  return ListView(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
+                    children: [
+                      _MedicalDocumentCard(prescription: data.prescription),
+                      const SizedBox(height: 12),
+                      _DoctorRecommendationCard(
+                          prescription: data.prescription),
+                      const SizedBox(height: 12),
+                      _AiSummaryCard(prescription: data.prescription),
+                      const SizedBox(height: 12),
+                      _MedicineScheduleCard(
+                        prescription: data.prescription,
+                        schedule: data.schedule,
+                      ),
+                      const SizedBox(height: 12),
+                      _ApptekaDraftCart(
+                        lines: data.cartLines,
+                        onChanged: () => setState(() {}),
+                      ),
+                      const SizedBox(height: 12),
+                      if (_remindersEnabled) const _ReminderEnabledCard(),
+                    ],
+                  );
+                },
+              ),
+            ),
           );
         },
       ),
+      bottomNavigationBar: SizedBox(
+        height: 86,
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 430),
+            child: FutureBuilder<_PrescriptionJourneyData>(
+              future: _future,
+              builder: (context, snapshot) {
+                final data = snapshot.data;
+                final total = data?.selectedTotal ?? 0;
+                final count =
+                    data?.cartLines.where((line) => line.selected).length ?? 0;
+
+                return SafeArea(
+                  minimum: const EdgeInsets.fromLTRB(16, 8, 16, 14),
+                  child: SizedBox(
+                    height: 54,
+                    child: FilledButton(
+                      onPressed: data == null || count == 0 || _buying
+                          ? null
+                          : () => _buy(data),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: _halykGreen,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                      ),
+                      child: Text(
+                        _buying
+                            ? 'Оформляем...'
+                            : 'Купить лекарства · ${total.toStringAsFixed(0)} ₸',
+                        style: const TextStyle(fontWeight: FontWeight.w900),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
 
-class _HomeSnapshot {
-  const _HomeSnapshot({
-    this.appointments = const [],
-    this.prescriptions = const [],
-    this.schedule = const [],
+class _PrescriptionJourneyData {
+  const _PrescriptionJourneyData({
+    required this.prescription,
+    required this.groups,
+    required this.schedule,
+    required this.cartLines,
   });
 
-  final List<Appointment> appointments;
-  final List<Prescription> prescriptions;
+  final Prescription prescription;
+  final List<MedicineProductGroup> groups;
   final List<MedicationScheduleItem> schedule;
+  final List<ApptekaDraftLine> cartLines;
 
-  Appointment? get nextAppointment {
-    final now = DateTime.now();
-    final upcoming = appointments
-        .where((item) =>
-            item.appointmentDate.isAfter(now) &&
-            item.status != 'CANCELLED' &&
-            item.status != 'COMPLETED')
-        .toList()
-      ..sort((a, b) => a.appointmentDate.compareTo(b.appointmentDate));
-    return upcoming.isEmpty ? null : upcoming.first;
-  }
-
-  Prescription? get latestPrescription =>
-      prescriptions.isEmpty ? null : prescriptions.first;
-
-  MedicationScheduleItem? get nextScheduleItem {
-    final planned = schedule.where((item) => item.status == 'PLANNED').toList()
-      ..sort((a, b) => a.takeTime.compareTo(b.takeTime));
-    return planned.isEmpty ? null : planned.first;
-  }
+  num get selectedTotal => cartLines.fold<num>(
+        0,
+        (sum, line) =>
+            line.selected ? sum + line.product.price * line.quantity : sum,
+      );
 }
 
-class _HeroHeader extends StatelessWidget {
-  const _HeroHeader({
-    required this.user,
-    required this.nextAppointment,
-    required this.onBook,
+class ApptekaDraftLine {
+  ApptekaDraftLine({
+    required this.medicine,
+    required this.product,
+    required this.quantity,
+    this.selected = true,
   });
 
-  final AppUser user;
-  final Appointment? nextAppointment;
-  final VoidCallback onBook;
+  final PrescriptionMedicine medicine;
+  final MarketProduct product;
+  int quantity;
+  bool selected;
+}
+
+class _MedicalDocumentCard extends StatelessWidget {
+  const _MedicalDocumentCard({required this.prescription});
+
+  final Prescription prescription;
 
   @override
   Widget build(BuildContext context) {
-    final top = MediaQuery.of(context).padding.top;
-
-    return Container(
-      padding: EdgeInsets.fromLTRB(16, top + 14, 16, 18),
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          colors: [_halykDark, _halykGreen],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-      ),
+    return _WhitePanel(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -342,18 +1133,11 @@ class _HeroHeader extends StatelessWidget {
                 width: 44,
                 height: 44,
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.16),
+                  color: const Color(0xFFE8F7EF),
                   borderRadius: BorderRadius.circular(14),
                 ),
-                child: const Center(
-                  child: Text(
-                    'HH',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                ),
+                child:
+                    const Icon(Icons.description_outlined, color: _halykGreen),
               ),
               const SizedBox(width: 12),
               const Expanded(
@@ -361,65 +1145,211 @@ class _HeroHeader extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Halyk Health',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 20,
-                        fontWeight: FontWeight.w900,
-                      ),
+                      'Электронное назначение',
+                      style:
+                          TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
                     ),
                     SizedBox(height: 2),
+                    Text('Форма назначения РК',
+                        style: TextStyle(color: _muted)),
+                  ],
+                ),
+              ),
+              const _StatusChip(text: 'Получено'),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _InfoRow(label: 'Диагноз', value: prescription.diagnosis),
+          _InfoRow(
+              label: 'Пациент',
+              value: prescription.patientProfile?.fullName ??
+                  'Пациент Halyk Health'),
+          const _InfoRow(label: 'Источник', value: 'Городская поликлиника №5'),
+          const Divider(height: 28),
+          const Text(
+            'Назначение врача',
+            style: TextStyle(fontWeight: FontWeight.w900),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            prescription.rawText,
+            style: const TextStyle(height: 1.45, color: _halykDark),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DoctorRecommendationCard extends StatelessWidget {
+  const _DoctorRecommendationCard({required this.prescription});
+
+  final Prescription prescription;
+
+  @override
+  Widget build(BuildContext context) {
+    return _WhitePanel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const _BlockTitle(
+              icon: Icons.medical_information_outlined,
+              title: 'Рекомендации врача'),
+          const SizedBox(height: 10),
+          Text(
+            prescription.doctorComment?.isNotEmpty == true
+                ? prescription.doctorComment!
+                : 'Следуйте назначению врача. При ухудшении состояния обратитесь в поликлинику повторно.',
+            style: const TextStyle(height: 1.45),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AiSummaryCard extends StatelessWidget {
+  const _AiSummaryCard({required this.prescription});
+
+  final Prescription prescription;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: const Color(0xFFE9F8F0),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0xFFCDEFD9)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const _BlockTitle(icon: Icons.auto_awesome, title: 'Кратко от AI'),
+          const SizedBox(height: 10),
+          Text(
+            prescription.aiSummary ??
+                'AI объяснит назначение простым языком после обработки текста врача.',
+            style: const TextStyle(height: 1.45, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            prescription.aiDisclaimer ??
+                'ИИ-агент не заменяет врача. Он объясняет назначение, созданное врачом.',
+            style: const TextStyle(color: _muted, height: 1.35, fontSize: 12),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MedicineScheduleCard extends StatelessWidget {
+  const _MedicineScheduleCard({
+    required this.prescription,
+    required this.schedule,
+  });
+
+  final Prescription prescription;
+  final List<MedicationScheduleItem> schedule;
+
+  @override
+  Widget build(BuildContext context) {
+    return _WhitePanel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const _BlockTitle(
+              icon: Icons.alarm_outlined, title: 'Прием препаратов'),
+          const SizedBox(height: 10),
+          ...prescription.medicines.map(
+            (medicine) => Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.check_circle, color: _halykGreen, size: 20),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      '${medicine.medicineName} ${medicine.dosage}: ${medicine.frequency}, ${medicine.duration}. ${medicine.instruction}.',
+                      style: const TextStyle(height: 1.35),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (schedule.isNotEmpty) ...[
+            const Divider(height: 24),
+            Text(
+              'График готов: ${schedule.length} напоминаний по времени назначения.',
+              style:
+                  const TextStyle(color: _muted, fontWeight: FontWeight.w700),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _ApptekaDraftCart extends StatelessWidget {
+  const _ApptekaDraftCart({
+    required this.lines,
+    required this.onChanged,
+  });
+
+  final List<ApptekaDraftLine> lines;
+  final VoidCallback onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    if (lines.isEmpty) {
+      return const _WhitePanel(
+        child: Text('Appteka не нашла товары по назначению.'),
+      );
+    }
+
+    return _WhitePanel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: _halykGreen,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Icon(Icons.add, color: Colors.white),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                     Text(
-                      'Медицина внутри super app',
-                      style: TextStyle(color: Color(0xD9FFFFFF)),
+                      'Корзина Appteka',
+                      style:
+                          TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+                    ),
+                    Text(
+                      'Товары подобраны по назначению',
+                      style: TextStyle(color: _muted),
                     ),
                   ],
                 ),
               ),
-              IconButton.filled(
-                style: IconButton.styleFrom(
-                  backgroundColor: Colors.white.withValues(alpha: 0.14),
-                ),
-                onPressed: () {},
-                icon: const Icon(Icons.notifications_none, color: Colors.white),
-              ),
             ],
           ),
-          const SizedBox(height: 22),
-          Text(
-            'Здравствуйте, ${user.fullName.split(' ').first}',
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 24,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            nextAppointment == null
-                ? 'Запишитесь к врачу, получите назначение и закажите лекарства в одном месте.'
-                : 'Ближайший приём уже запланирован. Мы напомним о визите и графике лечения.',
-            style: const TextStyle(
-              color: Color(0xD9FFFFFF),
-              height: 1.4,
-            ),
-          ),
-          const SizedBox(height: 16),
-          SizedBox(
-            width: double.infinity,
-            height: 52,
-            child: FilledButton.icon(
-              onPressed: onBook,
-              icon: const Icon(Icons.calendar_month_outlined),
-              label: const Text('Записаться к врачу'),
-              style: FilledButton.styleFrom(
-                backgroundColor: _halykGold,
-                foregroundColor: _halykDark,
-                textStyle: const TextStyle(fontWeight: FontWeight.w900),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-              ),
+          const SizedBox(height: 14),
+          ...lines.map(
+            (line) => _DraftCartLine(
+              line: line,
+              onChanged: onChanged,
             ),
           ),
         ],
@@ -428,466 +1358,247 @@ class _HeroHeader extends StatelessWidget {
   }
 }
 
-class _QuickActions extends StatelessWidget {
-  const _QuickActions({
-    required this.onBook,
-    required this.onOpenFamily,
-    required this.onOpenAppointments,
-    required this.onOpenPrescriptions,
-    required this.onOpenMarket,
+class _DraftCartLine extends StatelessWidget {
+  const _DraftCartLine({
+    required this.line,
+    required this.onChanged,
   });
 
-  final VoidCallback onBook;
-  final VoidCallback onOpenFamily;
-  final VoidCallback onOpenAppointments;
-  final VoidCallback onOpenPrescriptions;
-  final VoidCallback onOpenMarket;
+  final ApptekaDraftLine line;
+  final VoidCallback onChanged;
 
   @override
   Widget build(BuildContext context) {
-    return GridView.count(
-      crossAxisCount: 2,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      crossAxisSpacing: 10,
-      mainAxisSpacing: 10,
-      childAspectRatio: 1.55,
-      children: [
-        _ActionTile(
-          icon: Icons.people_outline,
-          title: 'Моя семья',
-          text: 'Добавить и управлять',
-          onTap: onOpenFamily,
-        ),
-        _ActionTile(
-          icon: Icons.event_available_outlined,
-          title: 'Мои записи',
-          text: 'Статусы и перенос',
-          onTap: onOpenAppointments,
-        ),
-        _ActionTile(
-          icon: Icons.assignment_outlined,
-          title: 'Назначения',
-          text: 'Врач + AI объяснение',
-          onTap: onOpenPrescriptions,
-        ),
-        _ActionTile(
-          icon: Icons.local_pharmacy_outlined,
-          title: 'Аптека',
-          text: 'Лекарства и аналоги',
-          onTap: onOpenMarket,
-        ),
-      ],
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color:
+            line.selected ? const Color(0xFFF8FAFC) : const Color(0xFFF3F4F6),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: _border),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Checkbox(
+            value: line.selected,
+            activeColor: _halykGreen,
+            onChanged: (value) {
+              line.selected = value == true;
+              onChanged();
+            },
+          ),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  line.product.title,
+                  style: const TextStyle(fontWeight: FontWeight.w900),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '${line.product.form} · ${line.product.pharmacyName}',
+                  style: const TextStyle(color: _muted, fontSize: 12),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Text(
+                      '${line.product.price.toStringAsFixed(0)} ₸',
+                      style: const TextStyle(fontWeight: FontWeight.w900),
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      'нужно ${line.medicine.quantityNeeded}',
+                      style: const TextStyle(color: _muted, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Column(
+            children: [
+              _QuantityButton(
+                icon: Icons.remove,
+                onTap: () {
+                  if (line.quantity > 1) {
+                    line.quantity--;
+                    onChanged();
+                  }
+                },
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Text(
+                  '${line.quantity}',
+                  style: const TextStyle(fontWeight: FontWeight.w900),
+                ),
+              ),
+              _QuantityButton(
+                icon: Icons.add,
+                onTap: () {
+                  line.quantity++;
+                  onChanged();
+                },
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }
 
-class _ActionTile extends StatelessWidget {
-  const _ActionTile({
+class _QuantityButton extends StatelessWidget {
+  const _QuantityButton({
     required this.icon,
-    required this.title,
-    required this.text,
     required this.onTap,
   });
 
   final IconData icon;
-  final String title;
-  final String text;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(18),
+      borderRadius: BorderRadius.circular(14),
       child: Container(
-        padding: const EdgeInsets.all(14),
+        width: 32,
+        height: 32,
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: const Color(0xFFE2EAEC)),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.035),
-              blurRadius: 14,
-              offset: const Offset(0, 6),
-            ),
-          ],
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: _border),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(icon, color: _halykGreen),
-            const Spacer(),
-            Text(
-              title,
-              style: const TextStyle(fontWeight: FontWeight.w900),
-            ),
-            const SizedBox(height: 3),
-            Text(
-              text,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(color: _textMuted, fontSize: 12),
-            ),
-          ],
-        ),
+        child: Icon(icon, size: 18),
       ),
     );
   }
 }
 
-class _SectionTitle extends StatelessWidget {
-  const _SectionTitle({
+class _ReminderEnabledCard extends StatelessWidget {
+  const _ReminderEnabledCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return const _WhitePanel(
+      child: Row(
+        children: [
+          Icon(Icons.notifications_active, color: _halykGreen),
+          SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Напоминания о приеме лекарств включены.',
+              style: TextStyle(fontWeight: FontWeight.w800),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _WhitePanel extends StatelessWidget {
+  const _WhitePanel({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: _border),
+      ),
+      child: child,
+    );
+  }
+}
+
+class _BlockTitle extends StatelessWidget {
+  const _BlockTitle({
+    required this.icon,
     required this.title,
-    required this.action,
-    required this.onAction,
   });
 
+  final IconData icon;
   final String title;
-  final String action;
-  final VoidCallback onAction;
 
   @override
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Expanded(
-          child: Text(
-            title,
-            style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w900),
-          ),
+        Icon(icon, color: _halykGreen),
+        const SizedBox(width: 8),
+        Text(
+          title,
+          style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
         ),
-        TextButton(onPressed: onAction, child: Text(action)),
       ],
     );
   }
 }
 
-class _OfferCarousel extends StatelessWidget {
-  const _OfferCarousel({
-    required this.prescription,
-    required this.nextSchedule,
-    required this.onOpenMarket,
-    required this.onOpenSchedule,
+class _InfoRow extends StatelessWidget {
+  const _InfoRow({
+    required this.label,
+    required this.value,
   });
 
-  final Prescription? prescription;
-  final MedicationScheduleItem? nextSchedule;
-  final VoidCallback onOpenMarket;
-  final VoidCallback onOpenSchedule;
+  final String label;
+  final String value;
 
   @override
   Widget build(BuildContext context) {
-    final scheduleText = nextSchedule == null
-        ? 'Появится после назначения врача и AI-анализа.'
-        : '${nextSchedule!.prescriptionMedicine.medicineName} · ${DateFormat('HH:mm').format(nextSchedule!.takeTime)}';
-    final cards = [
-      _OfferCard(
-        color: _halykGold,
-        icon: Icons.local_pharmacy_outlined,
-        title: prescription == null ? 'Аптечный маркет' : 'Лекарства по назначению',
-        text: prescription == null
-            ? 'Проверьте цены, наличие и аналоги препаратов.'
-            : 'AI выделил препараты, можно открыть подходящие товары.',
-        onTap: onOpenMarket,
-      ),
-      _OfferCard(
-        color: _halykGreen,
-        icon: Icons.alarm_outlined,
-        title: nextSchedule == null ? 'График приёма' : 'Следующий приём лекарства',
-        text: scheduleText,
-        onTap: onOpenSchedule,
-      ),
-    ];
-
-    return SizedBox(
-      height: 142,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        itemCount: cards.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 10),
-        itemBuilder: (_, index) => cards[index],
-      ),
-    );
-  }
-}
-
-class _OfferCard extends StatelessWidget {
-  const _OfferCard({
-    required this.color,
-    required this.icon,
-    required this.title,
-    required this.text,
-    required this.onTap,
-  });
-
-  final Color color;
-  final IconData icon;
-  final String title;
-  final String text;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(18),
-      child: Container(
-        width: 260,
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: color,
-          borderRadius: BorderRadius.circular(18),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(icon, color: color == _halykGold ? _halykDark : Colors.white),
-            const Spacer(),
-            Text(
-              title,
-              style: TextStyle(
-                color: color == _halykGold ? _halykDark : Colors.white,
-                fontSize: 16,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              text,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: color == _halykGold
-                    ? _halykDark.withValues(alpha: 0.76)
-                    : Colors.white.withValues(alpha: 0.82),
-                height: 1.3,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _AppointmentPreview extends StatelessWidget {
-  const _AppointmentPreview({required this.appointment});
-
-  final Appointment appointment;
-
-  @override
-  Widget build(BuildContext context) {
-    final date = appointment.appointmentDate.toLocal();
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFE2EAEC)),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 58,
-            height: 58,
-            decoration: BoxDecoration(
-              color: _softGreen,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Center(
-              child: Text(
-                DateFormat('dd').format(date),
-                style: const TextStyle(
-                  color: _halykGreen,
-                  fontSize: 22,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  appointment.doctor.fullName,
-                  style: const TextStyle(fontWeight: FontWeight.w900),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  '${appointment.clinic.name} · ${DateFormat('HH:mm').format(date)}',
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: _textMuted),
-                ),
-              ],
-            ),
-          ),
-          const Icon(Icons.chevron_right, color: _textMuted),
-        ],
-      ),
-    );
-  }
-}
-
-class _PrescriptionPreview extends StatelessWidget {
-  const _PrescriptionPreview({
-    required this.prescription,
-    required this.apiService,
-  });
-
-  final Prescription prescription;
-  final ApiService apiService;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(18),
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => PrescriptionDetailScreen(
-            apiService: apiService,
-            prescription: prescription,
-          ),
-        ),
-      ),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: const Color(0xFFE2EAEC)),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.assignment_outlined, color: _halykGreen),
-                const SizedBox(width: 8),
-                const Expanded(
-                  child: Text(
-                    'Последнее назначение',
-                    style: TextStyle(fontWeight: FontWeight.w900),
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-                  decoration: BoxDecoration(
-                    color: _softGreen,
-                    borderRadius: BorderRadius.circular(99),
-                  ),
-                  child: Text(
-                    prescription.status,
-                    style: const TextStyle(
-                      color: _halykGreen,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Text(
-              prescription.diagnosis,
-              style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
-            ),
-            const SizedBox(height: 5),
-            Text(
-              prescription.aiSummary ?? prescription.rawText,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(color: _textMuted, height: 1.35),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _EmptyHealthCard extends StatelessWidget {
-  const _EmptyHealthCard({required this.onBook});
-
-  final VoidCallback onBook;
-
-  @override
-  Widget build(BuildContext context) {
-    return _InfoBanner(
-      icon: Icons.calendar_month_outlined,
-      title: 'Запланируйте визит',
-      text:
-          'Выберите прикреплённую поликлинику, лечащего врача и удобный слот.',
-      action: 'Записаться',
-      onAction: onBook,
-    );
-  }
-}
-
-class _InfoBanner extends StatelessWidget {
-  const _InfoBanner({
-    required this.icon,
-    required this.title,
-    required this.text,
-    this.action,
-    this.onAction,
-  });
-
-  final IconData icon;
-  final String title;
-  final String text;
-  final String? action;
-  final VoidCallback? onAction;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFE2EAEC)),
-      ),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 42,
-            height: 42,
-            decoration: BoxDecoration(
-              color: _softGreen,
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Icon(icon, color: _halykGreen),
+          SizedBox(
+            width: 92,
+            child: Text(label, style: const TextStyle(color: _muted)),
           ),
-          const SizedBox(width: 12),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: const TextStyle(fontWeight: FontWeight.w900)),
-                const SizedBox(height: 4),
-                Text(
-                  text,
-                  style: const TextStyle(color: _textMuted, height: 1.35),
-                ),
-                if (action != null && onAction != null) ...[
-                  const SizedBox(height: 8),
-                  TextButton(
-                    onPressed: onAction,
-                    style: TextButton.styleFrom(padding: EdgeInsets.zero),
-                    child: Text(action!),
-                  ),
-                ],
-              ],
+            child: Text(
+              value,
+              style: const TextStyle(fontWeight: FontWeight.w800),
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _StatusChip extends StatelessWidget {
+  const _StatusChip({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: const Color(0xFFE8F7EF),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        text,
+        style: const TextStyle(
+          color: _halykGreen,
+          fontSize: 12,
+          fontWeight: FontWeight.w900,
+        ),
       ),
     );
   }
