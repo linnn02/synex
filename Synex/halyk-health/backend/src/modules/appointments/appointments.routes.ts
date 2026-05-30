@@ -20,13 +20,32 @@ const updateStatusSchema = z.object({
   status: z.nativeEnum(AppointmentStatus)
 });
 
+const rescheduleSchema = z.object({
+  appointmentDate: z.string().datetime()
+});
+
 const appointmentInclude = {
-  patient: { select: { id: true, fullName: true, email: true, phone: true } },
-  doctor: { select: { id: true, fullName: true, email: true, phone: true } },
+  patient: { select: { id: true, fullName: true, email: true, phone: true, role: true } },
+  doctor: {
+    select: {
+      id: true,
+      fullName: true,
+      email: true,
+      phone: true,
+      role: true,
+      doctorProfile: {
+        select: {
+          specialization: true,
+          roomNumber: true
+        }
+      }
+    }
+  },
   clinic: true,
-  prescription: true
+  prescription: { select: { id: true } }
 };
 
+// POST /api/appointments — create new appointment (PATIENT)
 router.post(
   "/",
   authenticate,
@@ -63,6 +82,7 @@ router.post(
   })
 );
 
+// GET /api/appointments/my — get current patient's appointments
 router.get(
   "/my",
   authenticate,
@@ -80,6 +100,7 @@ router.get(
   })
 );
 
+// GET /api/appointments/doctor — get appointments for doctor/admin
 router.get(
   "/doctor",
   authenticate,
@@ -97,6 +118,7 @@ router.get(
   })
 );
 
+// PATCH /api/appointments/:id/status — doctor/admin updates status
 router.patch(
   "/:id/status",
   authenticate,
@@ -124,5 +146,73 @@ router.patch(
   })
 );
 
-export default router;
+// PATCH /api/appointments/:id/cancel — patient cancels own appointment
+router.patch(
+  "/:id/cancel",
+  authenticate,
+  requireRole(UserRole.PATIENT),
+  asyncHandler(async (req, res) => {
+    const auth = getAuth(req);
+    const appointment = await prisma.appointment.findUnique({ where: { id: req.params.id } });
 
+    if (!appointment) {
+      throw new HttpError(404, "Appointment not found");
+    }
+
+    if (appointment.patientId !== auth.userId) {
+      throw new HttpError(403, "You can only cancel your own appointments");
+    }
+
+    if (appointment.status === AppointmentStatus.COMPLETED || appointment.status === AppointmentStatus.CANCELLED) {
+      throw new HttpError(400, "Cannot cancel a completed or already cancelled appointment");
+    }
+
+    const updatedAppointment = await prisma.appointment.update({
+      where: { id: req.params.id },
+      data: { status: AppointmentStatus.CANCELLED },
+      include: appointmentInclude
+    });
+
+    res.json(updatedAppointment);
+  })
+);
+
+// PATCH /api/appointments/:id/reschedule — patient reschedules own appointment
+router.patch(
+  "/:id/reschedule",
+  authenticate,
+  requireRole(UserRole.PATIENT),
+  validateBody(rescheduleSchema),
+  asyncHandler(async (req, res) => {
+    const auth = getAuth(req);
+    const appointment = await prisma.appointment.findUnique({ where: { id: req.params.id } });
+
+    if (!appointment) {
+      throw new HttpError(404, "Appointment not found");
+    }
+
+    if (appointment.patientId !== auth.userId) {
+      throw new HttpError(403, "You can only reschedule your own appointments");
+    }
+
+    if (
+      appointment.status === AppointmentStatus.COMPLETED ||
+      appointment.status === AppointmentStatus.CANCELLED
+    ) {
+      throw new HttpError(400, "Cannot reschedule a completed or cancelled appointment");
+    }
+
+    const updatedAppointment = await prisma.appointment.update({
+      where: { id: req.params.id },
+      data: {
+        appointmentDate: new Date(req.body.appointmentDate),
+        status: AppointmentStatus.RESCHEDULED
+      },
+      include: appointmentInclude
+    });
+
+    res.json(updatedAppointment);
+  })
+);
+
+export default router;

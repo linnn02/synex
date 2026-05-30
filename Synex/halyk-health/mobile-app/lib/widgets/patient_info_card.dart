@@ -16,7 +16,7 @@ class PatientInfoCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: Colors.black.withValues(alpha: 0.04),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -38,7 +38,8 @@ class PatientInfoCard extends StatelessWidget {
                 ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                 decoration: BoxDecoration(
                   color: isActive
                       ? const Color(0xFFE8F5E9)
@@ -46,8 +47,8 @@ class PatientInfoCard extends StatelessWidget {
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
                     color: isActive
-                        ? const Color(0xFF4CAF50).withOpacity(0.3)
-                        : const Color(0xFFF44336).withOpacity(0.3),
+                        ? const Color(0xFF4CAF50).withValues(alpha: 0.3)
+                        : const Color(0xFFF44336).withValues(alpha: 0.3),
                   ),
                 ),
                 child: Row(
@@ -56,7 +57,9 @@ class PatientInfoCard extends StatelessWidget {
                     Icon(
                       isActive ? Icons.check_circle : Icons.warning_rounded,
                       size: 14,
-                      color: isActive ? const Color(0xFF2E7D32) : const Color(0xFFC62828),
+                      color: isActive
+                          ? const Color(0xFF2E7D32)
+                          : const Color(0xFFC62828),
                     ),
                     const SizedBox(width: 4),
                     Text(
@@ -64,7 +67,9 @@ class PatientInfoCard extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.bold,
-                        color: isActive ? const Color(0xFF2E7D32) : const Color(0xFFC62828),
+                        color: isActive
+                            ? const Color(0xFF2E7D32)
+                            : const Color(0xFFC62828),
                       ),
                     ),
                   ],
@@ -83,20 +88,23 @@ class PatientInfoCard extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: const Color(0xFFFFF9C4), // Golden/yellow alert background
+                color:
+                    const Color(0xFFFFF9C4), // Golden/yellow alert background
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: const Color(0xFFFBC02D).withOpacity(0.5)),
+                border: Border.all(
+                    color: const Color(0xFFFBC02D).withValues(alpha: 0.5)),
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.info_outline, color: Color(0xFFF57F17), size: 20),
+                  const Icon(Icons.info_outline,
+                      color: Color(0xFFF57F17), size: 20),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
                       'Внимание! У вас отсутствует активная страховка. Доступна только запись на платной основе.',
                       style: TextStyle(
                         fontSize: 12,
-                        color: const Color(0xFFF57F17).withOpacity(0.9),
+                        color: const Color(0xFFF57F17).withValues(alpha: 0.9),
                         fontWeight: FontWeight.w500,
                       ),
                     ),

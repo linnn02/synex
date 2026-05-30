@@ -16,6 +16,7 @@ enum UserRole {
 enum AppointmentStatus {
   PENDING
   CONFIRMED
+  RESCHEDULED
   COMPLETED
   CANCELLED
 }
@@ -42,6 +43,7 @@ enum MatchType {
 model User {
   id           String    @id @default(uuid())
   fullName     String
+  iin          String?
   phone        String    @unique
   email        String    @unique
   passwordHash String

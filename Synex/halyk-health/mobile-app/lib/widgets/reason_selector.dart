@@ -50,7 +50,7 @@ class _ReasonSelectorState extends State<ReasonSelector> {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: Colors.black.withValues(alpha: 0.04),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -78,18 +78,22 @@ class _ReasonSelectorState extends State<ReasonSelector> {
                 label: Text(reason),
                 selected: isSelected,
                 onSelected: (_) => _onReasonSelected(reason),
-                selectedColor: const Color(0xFF00A884).withOpacity(0.15),
+                selectedColor: const Color(0xFF00A884).withValues(alpha: 0.15),
                 checkmarkColor: const Color(0xFF00A884),
                 labelStyle: TextStyle(
                   fontSize: 12,
                   fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                  color: isSelected ? const Color(0xFF00A884) : const Color(0xFF475569),
+                  color: isSelected
+                      ? const Color(0xFF00A884)
+                      : const Color(0xFF475569),
                 ),
                 backgroundColor: const Color(0xFFF8FAFC),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(30),
                   side: BorderSide(
-                    color: isSelected ? const Color(0xFF00A884) : const Color(0xFFE2E8F0),
+                    color: isSelected
+                        ? const Color(0xFF00A884)
+                        : const Color(0xFFE2E8F0),
                     width: 1,
                   ),
                 ),
@@ -102,10 +106,12 @@ class _ReasonSelectorState extends State<ReasonSelector> {
               controller: _otherReasonController,
               decoration: InputDecoration(
                 labelText: 'Укажите причину',
-                labelStyle: const TextStyle(color: Color(0xFF64748B), fontSize: 13),
+                labelStyle:
+                    const TextStyle(color: Color(0xFF64748B), fontSize: 13),
                 floatingLabelStyle: const TextStyle(color: Color(0xFF00A884)),
                 hintText: 'Опишите ваши симптомы...',
-                hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
+                hintStyle:
+                    const TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
                 filled: true,
                 fillColor: const Color(0xFFF8FAFC),
                 border: OutlineInputBorder(
@@ -114,7 +120,8 @@ class _ReasonSelectorState extends State<ReasonSelector> {
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10),
-                  borderSide: const BorderSide(color: Color(0xFF00A884), width: 1.5),
+                  borderSide:
+                      const BorderSide(color: Color(0xFF00A884), width: 1.5),
                 ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10),

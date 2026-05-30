@@ -25,10 +25,11 @@ class AppointmentSummary extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF00A884).withOpacity(0.2), width: 1.5),
+        border: Border.all(
+            color: const Color(0xFF00A884).withValues(alpha: 0.2), width: 1.5),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.03),
+            color: Colors.black.withValues(alpha: 0.03),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -64,16 +65,13 @@ class AppointmentSummary extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 14),
-          
           _buildSummaryRow('Пациент', patient.fullName),
           const Divider(height: 16, color: Color(0xFFF1F5F9)),
-          
           _buildSummaryRow('Поликлиника', clinic.name),
           const Divider(height: 16, color: Color(0xFFF1F5F9)),
-          
-          _buildSummaryRow('Врач', '${doctor.fullName} (${doctor.specialization})'),
+          _buildSummaryRow(
+              'Врач', '${doctor.fullName} (${doctor.specialization})'),
           const Divider(height: 16, color: Color(0xFFF1F5F9)),
-          
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -88,7 +86,7 @@ class AppointmentSummary extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFFFB300).withOpacity(0.1),
+                  color: const Color(0xFFFFB300).withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Text(
@@ -103,8 +101,8 @@ class AppointmentSummary extends StatelessWidget {
             ],
           ),
           const Divider(height: 16, color: Color(0xFFF1F5F9)),
-          
-          _buildSummaryRow('Причина обращения', reason.isEmpty ? 'Не указана' : reason),
+          _buildSummaryRow(
+              'Причина обращения', reason.isEmpty ? 'Не указана' : reason),
         ],
       ),
     );

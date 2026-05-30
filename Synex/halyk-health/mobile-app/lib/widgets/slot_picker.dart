@@ -34,10 +34,7 @@ class _SlotPickerState extends State<SlotPicker> {
   @override
   Widget build(BuildContext context) {
     // 1. Group unique dates
-    final uniqueDates = widget.slots
-        .map((s) => s.date)
-        .toSet()
-        .toList();
+    final uniqueDates = widget.slots.map((s) => s.date).toSet().toList();
 
     // 2. Filter slots for selected date
     final dailySlots = _selectedDate == null
@@ -50,7 +47,7 @@ class _SlotPickerState extends State<SlotPicker> {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: Colors.black.withValues(alpha: 0.04),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -69,7 +66,7 @@ class _SlotPickerState extends State<SlotPicker> {
             ),
           ),
           const SizedBox(height: 14),
-          
+
           // Date Picker (Horizontal list)
           const Text(
             'Доступные даты',
@@ -81,7 +78,8 @@ class _SlotPickerState extends State<SlotPicker> {
           ),
           const SizedBox(height: 8),
           uniqueDates.isEmpty
-              ? const Text('Нет доступных дат для записи', style: TextStyle(color: Colors.red, fontSize: 13))
+              ? const Text('Нет доступных дат для записи',
+                  style: TextStyle(color: Colors.red, fontSize: 13))
               : SizedBox(
                   height: 64,
                   child: ListView.separated(
@@ -98,7 +96,21 @@ class _SlotPickerState extends State<SlotPicker> {
                       String monthStr = 'Месяц';
                       if (parts.length > 1) {
                         final mNum = int.tryParse(parts[1]) ?? 1;
-                        const months = ['', 'Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'];
+                        const months = [
+                          '',
+                          'Янв',
+                          'Фев',
+                          'Мар',
+                          'Апр',
+                          'Май',
+                          'Июн',
+                          'Июл',
+                          'Авг',
+                          'Сен',
+                          'Окт',
+                          'Ноя',
+                          'Дек'
+                        ];
                         monthStr = months[mNum];
                       }
 
@@ -113,10 +125,14 @@ class _SlotPickerState extends State<SlotPicker> {
                           duration: const Duration(milliseconds: 200),
                           width: 60,
                           decoration: BoxDecoration(
-                            color: isSelected ? const Color(0xFF00A884) : const Color(0xFFF8FAFC),
+                            color: isSelected
+                                ? const Color(0xFF00A884)
+                                : const Color(0xFFF8FAFC),
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
-                              color: isSelected ? const Color(0xFF00A884) : const Color(0xFFE2E8F0),
+                              color: isSelected
+                                  ? const Color(0xFF00A884)
+                                  : const Color(0xFFE2E8F0),
                               width: 1,
                             ),
                           ),
@@ -128,7 +144,9 @@ class _SlotPickerState extends State<SlotPicker> {
                                 style: TextStyle(
                                   fontSize: 16,
                                   fontWeight: FontWeight.bold,
-                                  color: isSelected ? Colors.white : const Color(0xFF334155),
+                                  color: isSelected
+                                      ? Colors.white
+                                      : const Color(0xFF334155),
                                 ),
                               ),
                               const SizedBox(height: 2),
@@ -137,7 +155,9 @@ class _SlotPickerState extends State<SlotPicker> {
                                 style: TextStyle(
                                   fontSize: 10,
                                   fontWeight: FontWeight.w600,
-                                  color: isSelected ? Colors.white.withOpacity(0.8) : const Color(0xFF94A3B8),
+                                  color: isSelected
+                                      ? Colors.white.withValues(alpha: 0.8)
+                                      : const Color(0xFF94A3B8),
                                 ),
                               ),
                             ],
@@ -147,7 +167,7 @@ class _SlotPickerState extends State<SlotPicker> {
                     },
                   ),
                 ),
-          
+
           // Time Picker (Grid of slots)
           if (_selectedDate != null) ...[
             const SizedBox(height: 20),
@@ -190,12 +210,16 @@ class _SlotPickerState extends State<SlotPicker> {
                     decoration: BoxDecoration(
                       color: isSelected
                           ? const Color(0xFFFFB300) // Golden / Accent highlight
-                          : (isAvailable ? const Color(0xFFE8F5E9) : const Color(0xFFF1F5F9)),
+                          : (isAvailable
+                              ? const Color(0xFFE8F5E9)
+                              : const Color(0xFFF1F5F9)),
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(
                         color: isSelected
                             ? const Color(0xFFFFB300)
-                            : (isAvailable ? const Color(0xFF00A884).withOpacity(0.3) : const Color(0xFFE2E8F0)),
+                            : (isAvailable
+                                ? const Color(0xFF00A884).withValues(alpha: 0.3)
+                                : const Color(0xFFE2E8F0)),
                       ),
                     ),
                     child: Text(
@@ -205,8 +229,11 @@ class _SlotPickerState extends State<SlotPicker> {
                         fontWeight: FontWeight.bold,
                         color: isSelected
                             ? Colors.white
-                            : (isAvailable ? const Color(0xFF2E7D32) : const Color(0xFF94A3B8)),
-                        decoration: isAvailable ? null : TextDecoration.lineThrough,
+                            : (isAvailable
+                                ? const Color(0xFF2E7D32)
+                                : const Color(0xFF94A3B8)),
+                        decoration:
+                            isAvailable ? null : TextDecoration.lineThrough,
                       ),
                     ),
                   ),

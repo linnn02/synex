@@ -78,6 +78,9 @@ class Appointment {
     required this.status,
     required this.doctor,
     required this.clinic,
+    this.prescriptionId,
+    this.specialization,
+    this.roomNumber,
   });
 
   final String id;
@@ -86,18 +89,45 @@ class Appointment {
   final String status;
   final AppUser doctor;
   final Clinic clinic;
+  final String? prescriptionId;
+  final String? specialization;
+  final String? roomNumber;
 
   factory Appointment.fromJson(Map<String, dynamic> json) {
+    final doctorJson = json['doctor'] as Map<String, dynamic>;
+    final doctorProfile = doctorJson['doctorProfile'] as Map<String, dynamic>?;
     return Appointment(
       id: json['id'] as String,
       appointmentDate: DateTime.parse(json['appointmentDate'] as String),
       complaint: json['complaint'] as String,
       status: json['status'] as String,
-      doctor: AppUser.fromJson(json['doctor'] as Map<String, dynamic>),
+      doctor: AppUser.fromJson(doctorJson),
       clinic: Clinic.fromJson(json['clinic'] as Map<String, dynamic>),
+      prescriptionId: (json['prescription'] as Map<String, dynamic>?)?['id'] as String?,
+      specialization: doctorProfile?['specialization'] as String?,
+      roomNumber: doctorProfile?['roomNumber'] as String?,
+    );
+  }
+
+  Appointment copyWith({
+    String? status,
+    DateTime? appointmentDate,
+    String? prescriptionId,
+  }) {
+    return Appointment(
+      id: id,
+      appointmentDate: appointmentDate ?? this.appointmentDate,
+      complaint: complaint,
+      status: status ?? this.status,
+      doctor: doctor,
+      clinic: clinic,
+      prescriptionId: prescriptionId ?? this.prescriptionId,
+      specialization: specialization,
+      roomNumber: roomNumber,
     );
   }
 }
+
 
 class PrescriptionMedicine {
   const PrescriptionMedicine({

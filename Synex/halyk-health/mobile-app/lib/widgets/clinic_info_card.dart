@@ -14,7 +14,7 @@ class ClinicInfoCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: Colors.black.withValues(alpha: 0.04),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -103,7 +103,8 @@ class ClinicInfoCard extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  const Icon(Icons.phone_outlined, size: 16, color: Color(0xFF94A3B8)),
+                  const Icon(Icons.phone_outlined,
+                      size: 16, color: Color(0xFF94A3B8)),
                   const SizedBox(width: 6),
                   Text(
                     clinic.phone,
@@ -117,7 +118,8 @@ class ClinicInfoCard extends StatelessWidget {
               ),
               Row(
                 children: [
-                  const Icon(Icons.assignment_ind_outlined, size: 16, color: Color(0xFF00A884)),
+                  const Icon(Icons.assignment_ind_outlined,
+                      size: 16, color: Color(0xFF00A884)),
                   const SizedBox(width: 6),
                   Text(
                     clinic.status,

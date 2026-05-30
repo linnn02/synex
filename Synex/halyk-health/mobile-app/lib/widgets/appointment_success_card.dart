@@ -23,7 +23,7 @@ class AppointmentSuccessCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF00A884).withOpacity(0.08),
+            color: const Color(0xFF00A884).withValues(alpha: 0.08),
             blurRadius: 24,
             offset: const Offset(0, 8),
           ),
@@ -51,7 +51,7 @@ class AppointmentSuccessCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 18),
-          
+
           // Success Titles
           const Text(
             'Заявка успешно отправлена!',
@@ -68,7 +68,8 @@ class AppointmentSuccessCard extends StatelessWidget {
             decoration: BoxDecoration(
               color: const Color(0xFFFFF8E1), // Golden yellow background
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: const Color(0xFFFFD54F).withOpacity(0.5)),
+              border: Border.all(
+                  color: const Color(0xFFFFD54F).withValues(alpha: 0.5)),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -106,9 +107,11 @@ class AppointmentSuccessCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildTicketRow(Icons.local_hospital_outlined, 'Поликлиника', clinic.name),
+                _buildTicketRow(
+                    Icons.local_hospital_outlined, 'Поликлиника', clinic.name),
                 const Divider(height: 20, color: Color(0xFFE2E8F0)),
-                _buildTicketRow(Icons.person_outline, 'Лечащий врач', '${doctor.fullName} (${doctor.specialization})'),
+                _buildTicketRow(Icons.person_outline, 'Лечащий врач',
+                    '${doctor.fullName} (${doctor.specialization})'),
                 const Divider(height: 20, color: Color(0xFFE2E8F0)),
                 _buildTicketRow(
                   Icons.event_available_outlined,
@@ -118,7 +121,8 @@ class AppointmentSuccessCard extends StatelessWidget {
                   fontWeight: FontWeight.bold,
                 ),
                 const Divider(height: 20, color: Color(0xFFE2E8F0)),
-                _buildTicketRow(Icons.healing_outlined, 'Причина обращения', appointment.reason),
+                _buildTicketRow(Icons.healing_outlined, 'Причина обращения',
+                    appointment.reason),
               ],
             ),
           ),

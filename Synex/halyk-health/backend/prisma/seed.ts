@@ -1,9 +1,10 @@
-import { PrismaClient, UserRole } from "@prisma/client";
+import { PrismaClient, UserRole, AppointmentStatus, PrescriptionStatus } from "@prisma/client";
 import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
 
 async function main() {
+  // Clear all data in correct dependency order
   await prisma.cartItem.deleteMany();
   await prisma.medicationSchedule.deleteMany();
   await prisma.medicineMatch.deleteMany();
@@ -17,21 +18,23 @@ async function main() {
 
   const passwordHash = await bcrypt.hash("123456", 10);
 
+  // --- Users ---
   const patient = await prisma.user.create({
     data: {
       fullName: "Айдана Смагулова",
+      iin: "920815350112",
       phone: "+77010000001",
       email: "patient@test.kz",
       passwordHash,
       role: UserRole.PATIENT,
       birthDate: new Date("1994-04-12"),
-      address: "Алматы"
+      address: "Алматы, мкр. Алмагуль, д. 12"
     }
   });
 
   const doctor = await prisma.user.create({
     data: {
-      fullName: "Доктор Алия Нурланова",
+      fullName: "Алия Нурланова",
       phone: "+77010000002",
       email: "doctor@test.kz",
       passwordHash,
@@ -39,16 +42,38 @@ async function main() {
     }
   });
 
+  const doctor2 = await prisma.user.create({
+    data: {
+      fullName: "Дмитрий Иванов",
+      phone: "+77010000003",
+      email: "doctor2@test.kz",
+      passwordHash,
+      role: UserRole.DOCTOR
+    }
+  });
+
+  // --- Clinics ---
   const clinic = await prisma.clinic.create({
     data: {
       name: "Городская поликлиника №5",
       city: "Алматы",
-      address: "ул. Абая 120",
+      address: "ул. Абая 120, Алматы",
       bin: "990140001234",
       phone: "+77273000005"
     }
   });
 
+  const clinic2 = await prisma.clinic.create({
+    data: {
+      name: "Halyk MedCare Clinic №1",
+      city: "Алматы",
+      address: "пр. Аль-Фараби 101/3, Алматы",
+      bin: "990140009999",
+      phone: "+77272356901"
+    }
+  });
+
+  // --- Doctor Profiles ---
   await prisma.doctorProfile.create({
     data: {
       userId: doctor.id,
@@ -59,17 +84,124 @@ async function main() {
     }
   });
 
+  await prisma.doctorProfile.create({
+    data: {
+      userId: doctor2.id,
+      clinicId: clinic2.id,
+      specialization: "Кардиолог",
+      roomNumber: "305",
+      scheduleText: "Пн-Пт 10:00-18:00"
+    }
+  });
+
+  // --- Appointments with various statuses ---
+  const now = new Date();
+  const appointmentDate = (dayOffset: number, hour: number, minute = 0) => {
+    const date = new Date(now);
+    date.setDate(date.getDate() + dayOffset);
+    date.setHours(hour, minute, 0, 0);
+    return date;
+  };
+
+  // 1. PENDING — завтра
   await prisma.appointment.create({
     data: {
       patientId: patient.id,
       doctorId: doctor.id,
       clinicId: clinic.id,
-      appointmentDate: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      appointmentDate: appointmentDate(1, 9),
       complaint: "Температура, боль в горле, слабость",
-      status: "PENDING"
+      status: AppointmentStatus.PENDING
     }
   });
 
+  // 2. CONFIRMED — послезавтра
+  await prisma.appointment.create({
+    data: {
+      patientId: patient.id,
+      doctorId: doctor.id,
+      clinicId: clinic.id,
+      appointmentDate: appointmentDate(3, 14),
+      complaint: "Плановый осмотр, общее недомогание",
+      status: AppointmentStatus.CONFIRMED
+    }
+  });
+
+  // 3. RESCHEDULED — через 5 дней
+  await prisma.appointment.create({
+    data: {
+      patientId: patient.id,
+      doctorId: doctor2.id,
+      clinicId: clinic2.id,
+      appointmentDate: appointmentDate(5, 11),
+      complaint: "Боль в грудной клетке, учащённое сердцебиение",
+      status: AppointmentStatus.RESCHEDULED
+    }
+  });
+
+  // 4. COMPLETED — 7 дней назад, с назначением
+  const completedAppointment = await prisma.appointment.create({
+    data: {
+      patientId: patient.id,
+      doctorId: doctor.id,
+      clinicId: clinic.id,
+      appointmentDate: appointmentDate(-7, 10),
+      complaint: "ОРВИ, насморк, кашель",
+      status: AppointmentStatus.COMPLETED
+    }
+  });
+
+  // Add prescription for the completed appointment
+  const prescription = await prisma.prescription.create({
+    data: {
+      appointmentId: completedAppointment.id,
+      patientId: patient.id,
+      doctorId: doctor.id,
+      diagnosis: "ОРВИ средней степени тяжести",
+      rawText: "Диагноз: ОРВИ. Рекомендовано: постельный режим, обильное питьё, симптоматическое лечение.",
+      doctorComment: "Избегать переохлаждения. Повторный приём через 10 дней при необходимости.",
+      status: PrescriptionStatus.ACTIVE
+    }
+  });
+
+  await prisma.prescriptionMedicine.createMany({
+    data: [
+      {
+        prescriptionId: prescription.id,
+        medicineName: "Парацетамол 500 мг",
+        dosage: "500 мг",
+        frequency: "3 раза в день",
+        duration: "5 дней",
+        instruction: "Принимать после еды",
+        quantityNeeded: 15,
+        activeSubstance: "paracetamol"
+      },
+      {
+        prescriptionId: prescription.id,
+        medicineName: "Амоксициллин 500 мг",
+        dosage: "500 мг",
+        frequency: "2 раза в день",
+        duration: "7 дней",
+        instruction: "Принимать строго по часам",
+        quantityNeeded: 14,
+        activeSubstance: "amoxicillin"
+      }
+    ]
+  });
+
+  // 5. CANCELLED — 3 дня назад
+  await prisma.appointment.create({
+    data: {
+      patientId: patient.id,
+      doctorId: doctor2.id,
+      clinicId: clinic2.id,
+      appointmentDate: appointmentDate(-3, 15),
+      complaint: "Головная боль, головокружение",
+      status: AppointmentStatus.CANCELLED
+    }
+  });
+
+  // --- Market Products ---
   await prisma.marketProduct.createMany({
     data: [
       {
@@ -163,7 +295,11 @@ async function main() {
     ]
   });
 
-  console.log("Seed data ready: patient@test.kz / doctor@test.kz with password 123456");
+  console.log("✅ Seed complete:");
+  console.log("   Patient: patient@test.kz / 123456 / IIN 920815350112");
+  console.log("   Doctor:  doctor@test.kz  / 123456");
+  console.log("   Doctor2: doctor2@test.kz / 123456");
+  console.log("   Appointments: PENDING, CONFIRMED, RESCHEDULED, COMPLETED (with Rx), CANCELLED");
 }
 
 main()
@@ -174,4 +310,3 @@ main()
   .finally(async () => {
     await prisma.$disconnect();
   });
-

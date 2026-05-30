@@ -1,361 +1,452 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+
+import '../models/api_models.dart';
 import '../services/api_service.dart';
-import '../services/appointment_service.dart';
-import '../widgets/patient_info_card.dart';
-import '../widgets/clinic_info_card.dart';
-import '../widgets/doctor_info_card.dart';
-import '../widgets/reason_selector.dart';
-import '../widgets/slot_picker.dart';
-import '../widgets/appointment_summary.dart';
-import '../widgets/appointment_success_card.dart';
+
+const _green = Color(0xFF006B5B);
+const _greenLight = Color(0xFFE6F4F1);
+const _bg = Color(0xFFF5F7F8);
 
 class CreateAppointmentScreen extends StatefulWidget {
-  final ApiService apiService;
-
   const CreateAppointmentScreen({super.key, required this.apiService});
 
+  final ApiService apiService;
+
   @override
-  State<CreateAppointmentScreen> createState() => _CreateAppointmentScreenState();
+  State<CreateAppointmentScreen> createState() =>
+      _CreateAppointmentScreenState();
 }
 
 class _CreateAppointmentScreenState extends State<CreateAppointmentScreen> {
-  final _appointmentService = AppointmentService();
+  final _reasons = const [
+    'Плановый осмотр',
+    'Температура и слабость',
+    'Боль в горле',
+    'Головная боль',
+    'Повторный приём',
+  ];
+  final _times = const [
+    '09:00',
+    '09:30',
+    '10:00',
+    '10:30',
+    '11:00',
+    '11:30',
+    '14:00',
+    '14:30',
+    '15:00',
+    '15:30',
+    '16:00',
+    '16:30',
+  ];
 
-  // App State
   bool _loading = true;
-  String? _error;
-  MedCarePatient? _patient;
-  MedCareClinic? _clinic;
-  MedCareDoctor? _doctor;
-  List<AppointmentSlot> _slots = [];
-
-  // Form State
-  String _selectedReason = '';
-  String? _selectedDate;
-  String? _selectedTime;
   bool _submitting = false;
-
-  // Created Appointment State for Success Card
-  MedCareAppointment? _createdAppointment;
+  String? _error;
+  List<Clinic> _clinics = [];
+  List<DoctorProfile> _doctors = [];
+  Clinic? _clinic;
+  DoctorProfile? _doctor;
+  DateTime? _date;
+  String? _time;
+  String? _reason;
+  Appointment? _created;
 
   @override
   void initState() {
     super.initState();
-    _loadMedCareData();
+    _loadClinics();
   }
 
-  Future<void> _loadMedCareData() async {
+  Future<void> _loadClinics() async {
     setState(() {
       _loading = true;
       _error = null;
-      _selectedDate = null;
-      _selectedTime = null;
-      _selectedReason = '';
     });
 
     try {
-      final patient = await _appointmentService.getCurrentPatient();
-      if (patient == null) {
-        throw Exception('Данные пациента не найдены по указанному ИИН.');
+      final clinics = await widget.apiService.getClinics();
+      if (!mounted) return;
+
+      setState(() {
+        _clinics = clinics;
+        _clinic = clinics.isEmpty ? null : clinics.first;
+      });
+
+      if (_clinic != null) {
+        await _loadDoctors(_clinic!.id);
       }
 
-      final clinic = await _appointmentService.getPatientClinic(patient.clinicId);
-      final doctor = await _appointmentService.getPatientDoctor(patient.doctorId);
-      final slots = await _appointmentService.getAvailableSlots(patient.doctorId);
-
-      setState(() {
-        _patient = patient;
-        _clinic = clinic;
-        _doctor = doctor;
-        _slots = slots;
-        _loading = false;
-      });
+      if (!mounted) return;
+      setState(() => _loading = false);
     } catch (e) {
+      if (!mounted) return;
       setState(() {
-        _error = e.toString().replaceAll('Exception:', '').trim();
+        _error = e.toString().replaceFirst('Exception: ', '');
         _loading = false;
       });
     }
   }
 
-  void _onReasonChanged(String reason) {
+  Future<void> _loadDoctors(String clinicId) async {
+    final doctors = await widget.apiService.getClinicDoctors(clinicId);
+    if (!mounted) return;
     setState(() {
-      _selectedReason = reason;
+      _doctors = doctors;
+      _doctor = doctors.isEmpty ? null : doctors.first;
     });
   }
 
-  void _onSlotSelected(String date, String time) {
-    setState(() {
-      _selectedDate = date;
-      _selectedTime = time;
-    });
+  Future<void> _pickDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now().add(const Duration(days: 1)),
+      firstDate: DateTime.now().add(const Duration(days: 1)),
+      lastDate: DateTime.now().add(const Duration(days: 60)),
+      builder: (context, child) => Theme(
+        data: Theme.of(context).copyWith(
+          colorScheme: const ColorScheme.light(primary: _green),
+        ),
+        child: child!,
+      ),
+    );
+    if (picked != null) {
+      setState(() => _date = picked);
+    }
   }
 
-  Future<void> _submitAppointment() async {
-    if (_patient == null || _clinic == null || _doctor == null || _selectedDate == null || _selectedTime == null || _selectedReason.isEmpty) {
+  Future<void> _submit() async {
+    if (_clinic == null ||
+        _doctor == null ||
+        _date == null ||
+        _time == null ||
+        _reason == null) {
       return;
     }
 
+    final parts = _time!.split(':');
+    final appointmentDate = DateTime(
+      _date!.year,
+      _date!.month,
+      _date!.day,
+      int.parse(parts[0]),
+      int.parse(parts[1]),
+    );
+
     setState(() => _submitting = true);
-
     try {
-      final appointment = await _appointmentService.createAppointment(
-        patientId: _patient!.id,
-        doctorId: _doctor!.id,
+      final appointment = await widget.apiService.createAppointment(
+        doctorId: _doctor!.user.id,
         clinicId: _clinic!.id,
-        reason: _selectedReason,
-        date: _selectedDate!,
-        time: _selectedTime!,
+        appointmentDate: appointmentDate,
+        complaint: _reason!,
       );
-
+      if (!mounted) return;
       setState(() {
-        _createdAppointment = appointment;
+        _created = appointment;
         _submitting = false;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() => _submitting = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ошибка при отправке заявки: $e')),
+        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
       );
     }
-  }
-
-  // Switcher for testing active/inactive insurance
-  Widget _buildTestIinSelector() {
-    return Container(
-      color: const Color(0xFFF1F5F9),
-      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          const Text(
-            'Тест ИИН:',
-            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF475569)),
-          ),
-          Row(
-            children: [
-              _buildTestButton('920815350112', 'Активный', true),
-              const SizedBox(width: 6),
-              _buildTestButton('950101450231', 'Неактивный', false),
-            ],
-          )
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTestButton(String iin, String label, bool isActive) {
-    final isSelected = _patient?.iin == iin;
-    return GestureDetector(
-      onTap: () {
-        _appointmentService.setFakePatientIin(iin);
-        _loadMedCareData();
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFF00A884) : Colors.white,
-          borderRadius: BorderRadius.circular(6),
-          border: Border.all(
-            color: isSelected ? const Color(0xFF00A884) : const Color(0xFFCBD5E1),
-          ),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 10,
-            fontWeight: FontWeight.bold,
-            color: isSelected ? Colors.white : const Color(0xFF475569),
-          ),
-        ),
-      ),
-    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final isButtonEnabled = _selectedReason.isNotEmpty && _selectedDate != null && _selectedTime != null;
-
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
-      appBar: AppBar(
-        title: const Text(
-          'Halyk MedCare',
-          style: TextStyle(fontWeight: FontWeight.w900, fontSize: 20),
-        ),
-        backgroundColor: Colors.white,
-        foregroundColor: const Color(0xFF1E293B),
-        elevation: 0,
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(36),
-          child: _buildTestIinSelector(),
-        ),
-      ),
-      body: _createdAppointment != null
-          ? Center(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(18),
-                child: AppointmentSuccessCard(
-                  appointment: _createdAppointment!,
-                  clinic: _clinic!,
-                  doctor: _doctor!,
-                  onClose: () => Navigator.pop(context),
-                ),
+      backgroundColor: _bg,
+      appBar: AppBar(title: const Text('Новая запись')),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator(color: _green))
+          : _error != null
+              ? _ErrorState(error: _error!, onRetry: _loadClinics)
+              : _created != null
+                  ? _SuccessState(appointment: _created!)
+                  : _buildForm(),
+    );
+  }
+
+  Widget _buildForm() {
+    final canSubmit = _clinic != null &&
+        _doctor != null &&
+        _date != null &&
+        _time != null &&
+        _reason != null &&
+        !_submitting;
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        Container(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(8),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.04),
+                blurRadius: 14,
+                offset: const Offset(0, 4),
               ),
-            )
-          : _loading
-              ? const Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      CircularProgressIndicator(
-                        valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF00A884)),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Записаться к врачу',
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'Выберите поликлинику, врача, дату и время приёма',
+                style: TextStyle(color: Color(0xFF60727F), height: 1.35),
+              ),
+              const SizedBox(height: 18),
+              DropdownButtonFormField<Clinic>(
+                value: _clinic,
+                decoration: const InputDecoration(labelText: 'Поликлиника'),
+                items: _clinics
+                    .map(
+                      (clinic) => DropdownMenuItem(
+                        value: clinic,
+                        child: Text(clinic.name),
                       ),
-                      SizedBox(height: 16),
-                      Text(
-                        'Подтягиваем данные по ИИН...',
-                        style: TextStyle(color: Color(0xFF64748B), fontSize: 14, fontWeight: FontWeight.w500),
-                      ),
-                    ],
-                  ),
-                )
-              : _error != null
-                  ? Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(24),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Icon(Icons.error_outline_rounded, size: 64, color: Colors.red),
-                            const SizedBox(height: 16),
-                            Text(
-                              _error!,
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF1E293B)),
-                            ),
-                            const SizedBox(height: 24),
-                            ElevatedButton(
-                              onPressed: _loadMedCareData,
-                              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00A884)),
-                              child: const Text('Попробовать снова'),
-                            ),
-                          ],
+                    )
+                    .toList(),
+                onChanged: (clinic) async {
+                  if (clinic == null) return;
+                  setState(() {
+                    _clinic = clinic;
+                    _doctor = null;
+                    _doctors = [];
+                  });
+                  await _loadDoctors(clinic.id);
+                },
+              ),
+              if (_clinic != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  _clinic!.address,
+                  style:
+                      const TextStyle(color: Color(0xFF60727F), fontSize: 13),
+                ),
+              ],
+              const SizedBox(height: 14),
+              DropdownButtonFormField<DoctorProfile>(
+                value: _doctor,
+                decoration: const InputDecoration(labelText: 'Врач'),
+                items: _doctors
+                    .map(
+                      (doctor) => DropdownMenuItem(
+                        value: doctor,
+                        child: Text(
+                          '${doctor.user.fullName} · ${doctor.specialization}',
                         ),
                       ),
                     )
-                  : SingleChildScrollView(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          // Header Description
-                          Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              gradient: const LinearGradient(
-                                colors: [Color(0xFF00A884), Color(0xFF008966)],
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                              ),
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            child: const Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Записаться к врачу',
-                                  style: TextStyle(
-                                    fontSize: 20,
-                                    fontWeight: FontWeight.w900,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                                SizedBox(height: 6),
-                                Text(
-                                  'Система автоматически определит вашу поликлинику и лечащего врача по данным страховки.',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: const Color(0xE6FFFFFF),
-                                    height: 1.45,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-
-                          // Patient info
-                          PatientInfoCard(patient: _patient!),
-                          const SizedBox(height: 16),
-
-                          // Clinic info
-                          ClinicInfoCard(clinic: _clinic!),
-                          const SizedBox(height: 16),
-
-                          // Doctor info
-                          DoctorInfoCard(doctor: _doctor!),
-                          const SizedBox(height: 16),
-
-                          // Reason selector
-                          ReasonSelector(onChanged: _onReasonChanged),
-                          const SizedBox(height: 16),
-
-                          // Slot picker
-                          SlotPicker(slots: _slots, onSelected: _onSlotSelected),
-                          const SizedBox(height: 16),
-
-                          // Summary (Visible when inputs are selected)
-                          if (_selectedDate != null && _selectedTime != null) ...[
-                            AppointmentSummary(
-                              patient: _patient!,
-                              clinic: _clinic!,
-                              doctor: _doctor!,
-                              date: _selectedDate!,
-                              time: _selectedTime!,
-                              reason: _selectedReason,
-                            ),
-                            const SizedBox(height: 20),
-                          ],
-
-                          // Action button
-                          SizedBox(
-                            height: 54,
-                            child: FilledButton(
-                              onPressed: (isButtonEnabled && !_submitting) ? _submitAppointment : null,
-                              style: FilledButton.styleFrom(
-                                backgroundColor: const Color(0xFF00A884),
-                                disabledBackgroundColor: const Color(0xFFCBD5E1),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(16),
-                                ),
-                                elevation: 0,
-                              ),
-                              child: _submitting
-                                  ? const SizedBox(
-                                      width: 24,
-                                      height: 24,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2.5,
-                                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                                      ),
-                                    )
-                                  : const Row(
-                                      mainAxisAlignment: MainAxisAlignment.center,
-                                      children: [
-                                        Icon(Icons.check, size: 20),
-                                        SizedBox(width: 10),
-                                        Text(
-                                          'Отправить заявку',
-                                          style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
-                                        ),
-                                      ],
-                                    ),
-                            ),
-                          ),
-                          const SizedBox(height: 24),
-                        ],
+                    .toList(),
+                onChanged: (doctor) => setState(() => _doctor = doctor),
+              ),
+              const SizedBox(height: 14),
+              DropdownButtonFormField<String>(
+                value: _reason,
+                decoration:
+                    const InputDecoration(labelText: 'Причина обращения'),
+                items: _reasons
+                    .map(
+                      (reason) => DropdownMenuItem(
+                        value: reason,
+                        child: Text(reason),
                       ),
+                    )
+                    .toList(),
+                onChanged: (reason) => setState(() => _reason = reason),
+              ),
+              const SizedBox(height: 16),
+              _DateButton(date: _date, onTap: _pickDate),
+              const SizedBox(height: 16),
+              const Text(
+                'Время',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: _times
+                    .map(
+                      (time) => ChoiceChip(
+                        label: Text(time),
+                        selected: _time == time,
+                        selectedColor: _greenLight,
+                        checkmarkColor: _green,
+                        onSelected: (_) => setState(() => _time = time),
+                      ),
+                    )
+                    .toList(),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 18),
+        SizedBox(
+          height: 52,
+          child: FilledButton.icon(
+            onPressed: canSubmit ? _submit : null,
+            style: FilledButton.styleFrom(
+              backgroundColor: _green,
+              disabledBackgroundColor: const Color(0xFFCFDDE2),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8)),
+            ),
+            icon: _submitting
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
                     ),
+                  )
+                : const Icon(Icons.check),
+            label: Text(_submitting ? 'Отправляем...' : 'Отправить заявку'),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _DateButton extends StatelessWidget {
+  const _DateButton({required this.date, required this.onTap});
+
+  final DateTime? date;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        decoration: BoxDecoration(
+          color: date == null ? Colors.white : _greenLight,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: date == null ? const Color(0xFFCFDDE2) : _green,
+          ),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.calendar_today_outlined, color: _green, size: 18),
+            const SizedBox(width: 10),
+            Text(
+              date == null
+                  ? 'Выбрать дату'
+                  : DateFormat('dd MMMM yyyy', 'ru').format(date!),
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SuccessState extends StatelessWidget {
+  const _SuccessState({required this.appointment});
+
+  final Appointment appointment;
+
+  @override
+  Widget build(BuildContext context) {
+    final localDate = appointment.appointmentDate.toLocal();
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 72,
+              height: 72,
+              decoration: BoxDecoration(
+                color: _greenLight,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: const Icon(Icons.check_circle, color: _green, size: 42),
+            ),
+            const SizedBox(height: 18),
+            const Text(
+              'Заявка создана',
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '${appointment.doctor.fullName}\n${DateFormat('dd MMMM yyyy, HH:mm', 'ru').format(localDate)}',
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Color(0xFF60727F), height: 1.4),
+            ),
+            const SizedBox(height: 22),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: () => Navigator.pop(context),
+                style: FilledButton.styleFrom(backgroundColor: _green),
+                child: const Text('Готово'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ErrorState extends StatelessWidget {
+  const _ErrorState({required this.error, required this.onRetry});
+
+  final String error;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.cloud_off_outlined,
+                size: 56, color: Color(0xFFCFD8DC)),
+            const SizedBox(height: 16),
+            const Text(
+              'Не удалось загрузить данные',
+              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              error,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Color(0xFF60727F)),
+            ),
+            const SizedBox(height: 22),
+            FilledButton.icon(
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Повторить'),
+              style: FilledButton.styleFrom(backgroundColor: _green),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
