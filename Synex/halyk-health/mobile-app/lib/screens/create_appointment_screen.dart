@@ -309,7 +309,7 @@ class _CreateAppointmentScreenState extends State<CreateAppointmentScreen> {
           icon: Icons.local_hospital_outlined,
           child: DropdownButtonFormField<Clinic>(
             key: ValueKey(_selectedClinic?.id ?? 'clinic'),
-            initialValue: _selectedClinic,
+            value: _selectedClinic,
             decoration: const InputDecoration(labelText: 'Выберите клинику'),
             items: _clinics
                 .map(
@@ -335,7 +335,7 @@ class _CreateAppointmentScreenState extends State<CreateAppointmentScreen> {
           icon: Icons.medical_services_outlined,
           child: DropdownButtonFormField<DoctorProfile>(
             key: ValueKey(_selectedDoctor?.id ?? 'doctor'),
-            initialValue: _selectedDoctor,
+            value: _selectedDoctor,
             decoration: const InputDecoration(labelText: 'Выберите врача'),
             items: _doctors
                 .map(
