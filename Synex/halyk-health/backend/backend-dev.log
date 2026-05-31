@@ -1,0 +1,6 @@
+
+> halyk-health-backend@0.1.0 dev
+> tsx watch src/main.ts
+
+Halyk Health API is running on http://localhost:4000
+Swagger docs are available on http://localhost:4000/api/docs
